@@ -3,6 +3,58 @@ import { RTC } from './webrtc.js';
 document.addEventListener('DOMContentLoaded', () => {
   lucide.createIcons();
 
+  // ─── Epic Intro Particle Canvas ───
+  const epicIntro = document.getElementById('epicIntro');
+  const enterTheaterBtn = document.getElementById('enterTheaterBtn');
+  const starsCanvas = document.getElementById('starsCanvas');
+
+  if (starsCanvas) {
+    const ctx = starsCanvas.getContext('2d');
+    let width = starsCanvas.width = window.innerWidth;
+    let height = starsCanvas.height = window.innerHeight;
+    const stars = Array.from({ length: 90 }, () => ({
+      x: Math.random() * width,
+      y: Math.random() * height,
+      r: Math.random() * 2 + 0.5,
+      alpha: Math.random(),
+      speed: Math.random() * 0.02 + 0.005
+    }));
+
+    function drawStars() {
+      ctx.clearRect(0, 0, width, height);
+      stars.forEach(s => {
+        s.alpha += s.speed;
+        if (s.alpha > 1 || s.alpha < 0) s.speed = -s.speed;
+        ctx.fillStyle = `rgba(255, 215, 0, ${Math.abs(s.alpha)})`;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      if (epicIntro && !epicIntro.classList.contains('hidden')) {
+        requestAnimationFrame(drawStars);
+      }
+    }
+    drawStars();
+
+    window.addEventListener('resize', () => {
+      width = starsCanvas.width = window.innerWidth;
+      height = starsCanvas.height = window.innerHeight;
+    });
+  }
+
+  if (enterTheaterBtn && epicIntro) {
+    enterTheaterBtn.addEventListener('click', () => {
+      epicIntro.classList.add('hidden');
+      setTimeout(() => epicIntro.remove(), 700);
+      ping(); // Play entrance sound chime
+    });
+  }
+
+  // ─── Auto-Ping Keep Alive (Client-side ping every 13 minutes) ───
+  setInterval(() => {
+    fetch('/ping').catch(() => {});
+  }, 13 * 60 * 1000);
+
   // ─── State ───
   let roomId = null;
   let camOn = false;

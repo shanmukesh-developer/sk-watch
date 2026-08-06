@@ -7,9 +7,10 @@ html{-webkit-text-size-adjust:100%;scrollbar-width:thin;scrollbar-color:rgba(255
 :root{
   --bg:#0a0c12;--bg2:#12151f;--bg3:#1a1e2e;
   --border:rgba(255,255,255,.07);--border2:rgba(255,255,255,.12);
-  --cyan:#00d4ff;--purple:#a855f7;--rose:#f43f5e;--green:#22c55e;--amber:#f59e0b;
+  --cyan:#00d4ff;--purple:#a855f7;--rose:#f43f5e;--green:#22c55e;--amber:#f59e0b;--gold:#ffd700;
   --text:#f1f5f9;--text2:#94a3b8;--text3:#64748b;
   --font:'Inter',system-ui,sans-serif;
+  --font-cinzel:'Cinzel',serif;
   --r:10px;--r2:16px;--r-full:999px;
   --glass:rgba(15,18,28,.82);
   --tr:all .2s ease;
@@ -17,6 +18,34 @@ html{-webkit-text-size-adjust:100%;scrollbar-width:thin;scrollbar-color:rgba(255
 
 body{font-family:var(--font);background:var(--bg);color:var(--text);overflow:hidden;height:100dvh}
 ::selection{background:rgba(0,212,255,.25);color:#fff}
+
+/* ── Epic Baahubali-Style Intro Overlay ── */
+.epic-intro{position:fixed;inset:0;z-index:999;background:radial-gradient(ellipse at center,#121626 0%,#06080d 100%);display:flex;align-items:center;justify-content:center;padding:24px;transition:opacity .6s ease,transform .6s ease}
+.epic-intro.hidden{opacity:0;transform:scale(1.05);pointer-events:none}
+
+#starsCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+
+.intro-content{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;text-align:center;max-width:780px;gap:18px}
+.intro-badge{font-size:.75rem;font-weight:700;letter-spacing:2px;color:var(--gold);background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.25);padding:6px 16px;border-radius:var(--r-full);box-shadow:0 0 15px rgba(255,215,0,.15)}
+
+.intro-title{font-family:var(--font-cinzel);font-size:clamp(2.5rem,6vw,4.5rem);font-weight:900;letter-spacing:-1px;line-height:1.1;color:#fff;text-shadow:0 0 30px rgba(0,212,255,.3)}
+.gold-text{background:linear-gradient(135deg,#ffe875,#ffd700,#ffaa00);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 25px rgba(255,215,0,.4)}
+
+.intro-tagline{font-size:1.15rem;font-weight:600;color:var(--cyan);letter-spacing:.5px}
+.intro-sub{font-size:.85rem;color:var(--text2);max-width:540px;line-height:1.6}
+
+.btn-epic{position:relative;display:inline-flex;align-items:center;gap:10px;padding:14px 36px;border-radius:var(--r-full);background:linear-gradient(135deg,var(--gold),var(--cyan),var(--purple));background-size:200% 200%;color:#000;font-weight:800;font-size:1.05rem;border:none;cursor:pointer;box-shadow:0 0 30px rgba(0,212,255,.4),0 0 15px rgba(255,215,0,.3);transition:all .3s ease;animation:gradientShift 4s ease infinite;font-family:var(--font)}
+@keyframes gradientShift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+.btn-epic:hover{transform:scale(1.06);box-shadow:0 0 45px rgba(0,212,255,.6),0 0 25px rgba(255,215,0,.5)}
+
+.intro-features{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;width:100%;margin-top:16px}
+.feat-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px;background:rgba(255,255,255,.03);border:1px solid var(--border2);border-radius:var(--r);font-size:.78rem;font-weight:600;color:var(--text2);backdrop-filter:blur(8px)}
+.feat-card i{color:var(--gold);width:20px;height:20px}
+
+@media(max-width:768px){
+  .intro-features{grid-template-columns:repeat(2,1fr);gap:8px}
+  .btn-epic{padding:12px 28px;font-size:.9rem}
+}
 
 /* ── App Layout ── */
 .app{display:flex;flex-direction:column;height:100dvh;gap:8px;padding:8px;max-width:1600px;margin:0 auto}
