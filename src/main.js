@@ -155,10 +155,13 @@ document.addEventListener('DOMContentLoaded', () => {
     onScreen: (stream) => {
       if (stream) {
         screenVideo.srcObject = stream;
+        screenVideo.muted = false;
+        screenVideo.volume = volSlider ? volSlider.value / 100 : 1;
         screenVideo.style.display = 'block';
         localVideo.style.display = 'none';
         welcome.style.display = 'none';
-        toast('Receiving HD screen!', 'ok');
+        screenVideo.play().catch(err => console.log('Auto-play blocked, click page to enable audio/video', err));
+        toast('Receiving HD screen & audio!', 'ok');
       } else {
         screenVideo.srcObject = null;
         screenVideo.style.display = 'none';
@@ -166,8 +169,15 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     },
     onCam: (stream) => {
-      if (stream) { remoteCam.srcObject = stream; pipOff.style.display = 'none'; }
-      else { remoteCam.srcObject = null; pipOff.style.display = 'flex'; }
+      if (stream) {
+        remoteCam.srcObject = stream;
+        remoteCam.muted = false;
+        pipOff.style.display = 'none';
+        remoteCam.play().catch(err => console.log('Cam playback blocked', err));
+      } else {
+        remoteCam.srcObject = null;
+        pipOff.style.display = 'flex';
+      }
     },
     onData: (d) => handleData(d)
   });
@@ -223,7 +233,9 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const s = await rtc.shareScreen();
       screenVideo.srcObject = s;
+      screenVideo.muted = true; // Mute local preview to prevent audio echo loop
       screenVideo.style.display = 'block';
+      screenVideo.play().catch(()=>{});
       localVideo.style.display = 'none';
       welcome.style.display = 'none';
       syncMode = false;

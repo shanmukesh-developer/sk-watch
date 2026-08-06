@@ -26,7 +26,9 @@ export class RTC {
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' }
           ]
         }
       };
@@ -42,6 +44,7 @@ export class RTC {
       this.peer.on('connection', c => this._handleConn(c));
       this.peer.on('call', c => this._handleCall(c));
       this.peer.on('error', e => {
+        console.error('[WebRTC Error]', e);
         this.cb.onStatus('error', e.message);
         reject(e);
       });
@@ -54,8 +57,6 @@ export class RTC {
     this.cb.onStatus('connecting');
     const c = this.peer.connect(targetId, { reliable: true });
     this._handleConn(c);
-    if (this.screenStream) this._call(targetId, this.screenStream, 'screen');
-    if (this.camStream) this._call(targetId, this.camStream, 'cam');
   }
 
   _handleConn(c) {
@@ -63,6 +64,14 @@ export class RTC {
     c.on('open', () => {
       this.cb.onConnect(c.peer);
       this.cb.onStatus('connected');
+
+      // Send existing active streams to newly connected peer
+      if (this.screenStream) {
+        this._call(c.peer, this.screenStream, 'screen');
+      }
+      if (this.camStream) {
+        this._call(c.peer, this.camStream, 'cam');
+      }
     });
     c.on('data', d => this.cb.onData(d));
     c.on('close', () => {
@@ -73,25 +82,60 @@ export class RTC {
 
   _handleCall(call) {
     const type = call.metadata?.type || 'screen';
-    call.answer(type === 'cam' ? this.camStream : this.screenStream);
-    call.on('stream', s => type === 'cam' ? this.cb.onCam(s) : this.cb.onScreen(s));
-    call.on('close', () => type === 'cam' ? this.cb.onCam(null) : this.cb.onScreen(null));
+    const answerStream = type === 'cam' ? this.camStream : this.screenStream;
+
+    // Answer call (with local stream if active, otherwise empty answer)
+    call.answer(answerStream || undefined);
+
+    call.on('stream', remoteStream => {
+      if (type === 'cam') {
+        this.cb.onCam(remoteStream);
+      } else {
+        this.cb.onScreen(remoteStream);
+      }
+    });
+
+    call.on('close', () => {
+      if (type === 'cam') {
+        this.cb.onCam(null);
+      } else {
+        this.cb.onScreen(null);
+      }
+    });
   }
 
   _call(targetId, stream, type) {
     if (!this.peer || !stream) return;
     const call = this.peer.call(targetId, stream, { metadata: { type } });
-    call.on('stream', s => type === 'cam' ? this.cb.onCam(s) : this.cb.onScreen(s));
+
+    // Handle return stream from receiver if receiver answered with a stream
+    call.on('stream', remoteStream => {
+      if (remoteStream && remoteStream.getTracks().length > 0) {
+        if (type === 'cam') {
+          this.cb.onCam(remoteStream);
+        } else {
+          this.cb.onScreen(remoteStream);
+        }
+      }
+    });
   }
 
   async shareScreen() {
     const s = await navigator.mediaDevices.getDisplayMedia({
       video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } },
-      audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 48000 }
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        suppressLocalAudioPlayback: false
+      }
     });
     this.screenStream = s;
     s.getVideoTracks()[0].onended = () => this.stopScreen();
-    if (this.conn?.open) this._call(this.conn.peer, s, 'screen');
+
+    if (this.conn?.open) {
+      this._call(this.conn.peer, s, 'screen');
+    }
     return s;
   }
 
@@ -100,6 +144,7 @@ export class RTC {
       this.screenStream.getTracks().forEach(t => t.stop());
       this.screenStream = null;
     }
+    this.cb.onScreen(null);
   }
 
   async startCam() {
@@ -109,7 +154,10 @@ export class RTC {
     });
     const processed = await this.dsp.process(raw);
     this.camStream = processed;
-    if (this.conn?.open) this._call(this.conn.peer, processed, 'cam');
+
+    if (this.conn?.open) {
+      this._call(this.conn.peer, processed, 'cam');
+    }
     return processed;
   }
 
@@ -118,6 +166,7 @@ export class RTC {
       this.camStream.getTracks().forEach(t => t.stop());
       this.camStream = null;
     }
+    this.cb.onCam(null);
   }
 
   send(type, payload) {
