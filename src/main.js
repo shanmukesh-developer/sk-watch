@@ -164,6 +164,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // ─── Mobile / Autoplay Unmute Handler ───
+  const tapUnmute = $('tapUnmute');
+  function enableMediaPlayback() {
+    [screenVideo, localVideo, remoteCam, localCam].forEach(v => {
+      if (v && v.srcObject || v.src) {
+        v.play().catch(() => {});
+      }
+    });
+    if (rtc.dsp && rtc.dsp.ctx && rtc.dsp.ctx.state === 'suspended') {
+      rtc.dsp.ctx.resume().catch(() => {});
+    }
+    if (tapUnmute) tapUnmute.style.display = 'none';
+  }
+
+  if (tapUnmute) {
+    tapUnmute.addEventListener('click', enableMediaPlayback);
+    document.addEventListener('touchstart', enableMediaPlayback, { once: true });
+  }
+
   // ─── RTC Setup ───
   const rtc = new RTC({
     onStatus: (s) => {
@@ -174,6 +193,10 @@ document.addEventListener('DOMContentLoaded', () => {
     onConnect: (pid) => {
       sysMsg('🎉 Partner connected!');
       toast('Partner joined!', 'ok');
+      // If host is playing a synced local video, send current sync position to partner
+      if (syncMode && localVideo && !localVideo.paused) {
+        rtc.send('SYNC', { a: 'play', t: localVideo.currentTime });
+      }
     },
     onDisconnect: () => {
       sysMsg('Partner disconnected.');
@@ -188,7 +211,10 @@ document.addEventListener('DOMContentLoaded', () => {
         screenVideo.style.display = 'block';
         localVideo.style.display = 'none';
         welcome.style.display = 'none';
-        screenVideo.play().catch(err => console.log('Auto-play blocked, click page to enable audio/video', err));
+        screenVideo.play().catch(err => {
+          console.log('Auto-play blocked, tap banner to enable', err);
+          if (tapUnmute) tapUnmute.style.display = 'flex';
+        });
         toast('Receiving HD screen & audio!', 'ok');
       } else {
         screenVideo.srcObject = null;
@@ -200,7 +226,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (stream) {
         remoteCam.srcObject = stream;
         remoteCam.muted = false;
-        remoteCam.play().catch(err => console.log('Cam playback blocked', err));
+        remoteCam.play().catch(err => {
+          console.log('Cam playback blocked, tap banner to enable', err);
+          if (tapUnmute) tapUnmute.style.display = 'flex';
+        });
         updatePipVisibility();
         toast('Partner camera connected!', 'ok');
       } else {

@@ -42,10 +42,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);overflow:hid
 .feat-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px;background:rgba(255,255,255,.03);border:1px solid var(--border2);border-radius:var(--r);font-size:.78rem;font-weight:600;color:var(--text2);backdrop-filter:blur(8px)}
 .feat-card i{color:var(--gold);width:20px;height:20px}
 
-@media(max-width:768px){
-  .intro-features{grid-template-columns:repeat(2,1fr);gap:8px}
-  .btn-epic{padding:12px 28px;font-size:.9rem}
-}
+.tap-unmute{position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:900;background:rgba(245,158,11,.9);color:#000;font-weight:700;font-size:.82rem;padding:8px 16px;border-radius:var(--r-full);display:flex;align-items:center;gap:8px;box-shadow:0 4px 15px rgba(245,158,11,.4);cursor:pointer;animation:bounceBanner 1.5s infinite}
+@keyframes bounceBanner{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-4px)}}
 
 /* ── App Layout ── */
 .app{display:flex;flex-direction:column;height:100dvh;gap:8px;padding:8px;max-width:1600px;margin:0 auto}

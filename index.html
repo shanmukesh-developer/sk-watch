@@ -52,6 +52,12 @@
     </div>
   </div>
 
+  <!-- Mobile Autoplay Enable Banner -->
+  <div class="tap-unmute" id="tapUnmute" style="display:none">
+    <i data-lucide="volume-2"></i>
+    <span>Tap anywhere to enable live audio & video stream</span>
+  </div>
+
   <!-- Toast container -->
   <div id="toasts" class="toasts"></div>
 
@@ -95,7 +101,7 @@
         <div class="welcome" id="welcome">
           <div class="welcome-icon">🎬</div>
           <h2>Ready for Movie Night</h2>
-          <p>Share your screen with HD audio or load a video file to sync together</p>
+          <p>Share your screen with HD audio or load a local video file to sync together</p>
           <div class="welcome-btns">
             <button class="btn-primary" id="shareBtn"><i data-lucide="monitor" style="width:18px;height:18px"></i> Share Screen</button>
             <label class="btn-outline" for="fileIn"><i data-lucide="file-video" style="width:18px;height:18px"></i> Load File</label>
@@ -107,7 +113,7 @@
         <!-- PIP webcam -->
         <div class="pip" id="pip">
           <div class="pip-drag" id="pipDrag">
-            <span class="pip-label">Partner</span>
+            <span class="pip-label" id="pipLabel">Webcam</span>
             <button class="pip-toggle" id="pipToggle"><i data-lucide="minus" style="width:12px;height:12px"></i></button>
           </div>
           <div class="pip-video" id="pipVideoWrap">
