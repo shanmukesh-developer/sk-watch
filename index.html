@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SK WatchParty — Watch Together</title>
+  <meta name="description" content="Watch movies together in HD with live video reactions and crystal-clear audio. No lag, no noise.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!-- Toast container -->
+  <div id="toasts" class="toasts"></div>
+
+  <!-- App -->
+  <div class="app">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">SK</div>
+        <span class="logo-label">WatchParty</span>
+      </div>
+
+      <div class="header-center">
+        <div class="status-pill" id="statusPill">
+          <span class="dot" id="statusDot"></span>
+          <span id="statusText">Connecting...</span>
+        </div>
+        <div class="room-pill" id="roomPill" style="display:none">
+          <code id="roomIdDisplay">---</code>
+          <button class="sm-btn" id="copyIdBtn" title="Copy Room ID"><i data-lucide="copy" style="width:14px;height:14px"></i></button>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <button class="btn-ghost" id="openRoomBtn"><i data-lucide="link" style="width:16px;height:16px"></i> <span class="hide-mobile">Room</span></button>
+        <button class="btn-icon" id="theaterBtn" title="Theater mode"><i data-lucide="maximize-2" style="width:16px;height:16px"></i></button>
+      </div>
+    </header>
+
+    <!-- Main Area -->
+    <div class="main">
+
+      <!-- Video Screen -->
+      <div class="screen" id="screen">
+
+        <video id="screenVideo" autoplay playsinline></video>
+        <video id="localVideo" playsinline style="display:none"></video>
+
+        <!-- Welcome state -->
+        <div class="welcome" id="welcome">
+          <div class="welcome-icon">🎬</div>
+          <h2>Ready for Movie Night</h2>
+          <p>Share your screen with HD audio or load a video file to sync together</p>
+          <div class="welcome-btns">
+            <button class="btn-primary" id="shareBtn"><i data-lucide="monitor" style="width:18px;height:18px"></i> Share Screen</button>
+            <label class="btn-outline" for="fileIn"><i data-lucide="file-video" style="width:18px;height:18px"></i> Load File</label>
+            <input type="file" id="fileIn" accept="video/*" hidden>
+          </div>
+          <div class="tip">💡 Select <b>"Also share tab audio"</b> when prompted for best audio quality</div>
+        </div>
+
+        <!-- PIP webcam -->
+        <div class="pip" id="pip">
+          <div class="pip-drag" id="pipDrag">
+            <span class="pip-label">Partner</span>
+            <button class="pip-toggle" id="pipToggle"><i data-lucide="minus" style="width:12px;height:12px"></i></button>
+          </div>
+          <div class="pip-video" id="pipVideoWrap">
+            <video id="remoteCam" autoplay playsinline></video>
+            <video id="localCam" autoplay playsinline muted class="pip-self"></video>
+            <div class="pip-off" id="pipOff"><i data-lucide="video-off" style="width:20px;height:20px"></i></div>
+            <div class="pip-ring" id="pipRing"></div>
+          </div>
+        </div>
+
+        <!-- Emoji overlay -->
+        <div class="emoji-layer" id="emojiLayer"></div>
+
+        <!-- Controls bar -->
+        <div class="controls" id="controls">
+          <button class="ctrl-btn" id="playPauseBtn" title="Play/Pause"><i data-lucide="play" style="width:18px;height:18px"></i></button>
+          <span class="ctrl-time" id="timeLabel">--:-- / --:--</span>
+          <input type="range" class="ctrl-seek" id="seekBar" value="0" min="0" max="1000" step="1">
+          <div class="ctrl-reactions hide-mobile">
+            <button class="emoji-btn" data-e="❤️">❤️</button>
+            <button class="emoji-btn" data-e="😂">😂</button>
+            <button class="emoji-btn" data-e="🍿">🍿</button>
+            <button class="emoji-btn" data-e="😱">😱</button>
+          </div>
+          <div class="ctrl-sep hide-mobile"></div>
+          <button class="ctrl-btn" id="volBtn" title="Mute"><i data-lucide="volume-2" style="width:16px;height:16px"></i></button>
+          <input type="range" class="ctrl-vol hide-mobile" id="volSlider" min="0" max="100" value="100">
+          <div class="ctrl-sep"></div>
+          <button class="ctrl-btn" id="camBtn" title="Camera (C)"><i data-lucide="video" style="width:16px;height:16px"></i></button>
+          <button class="ctrl-btn" id="micBtn" title="Mic (M)"><i data-lucide="mic" style="width:16px;height:16px"></i></button>
+          <button class="ctrl-btn active" id="noiseBtn" title="Noise Filter"><i data-lucide="shield-check" style="width:16px;height:16px"></i></button>
+          <button class="ctrl-btn" id="fsBtn" title="Fullscreen (F)"><i data-lucide="maximize" style="width:16px;height:16px"></i></button>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <aside class="sidebar" id="sidebar">
+        <div class="side-tabs">
+          <button class="side-tab active" data-panel="chatPanel"><i data-lucide="message-circle" style="width:14px;height:14px"></i> Chat</button>
+          <button class="side-tab" data-panel="audioPanel"><i data-lucide="sliders" style="width:14px;height:14px"></i> Audio</button>
+        </div>
+
+        <!-- Chat Panel -->
+        <div class="side-panel active" id="chatPanel">
+          <div class="chat-log" id="chatLog">
+            <div class="sys-msg">Welcome to SK WatchParty! Create or join a room to start.</div>
+          </div>
+          <form class="chat-form" id="chatForm">
+            <input type="text" id="chatIn" placeholder="Message..." autocomplete="off">
+            <button type="submit" class="btn-send"><i data-lucide="send" style="width:16px;height:16px"></i></button>
+          </form>
+        </div>
+
+        <!-- Audio Panel -->
+        <div class="side-panel" id="audioPanel">
+          <div class="audio-cfg">
+            <h4>🔊 Noise Filter</h4>
+            <label class="cfg-row"><span>Noise Suppression</span><input type="checkbox" id="noiseCheck" checked></label>
+            <label class="cfg-row"><span>Gate Sensitivity</span><span id="gateVal">-45 dB</span></label>
+            <input type="range" id="gateSlider" min="-80" max="-10" value="-45">
+            <label class="cfg-row"><span>Mic Gain</span><span id="gainVal">1.0x</span></label>
+            <input type="range" id="gainSlider" min="0" max="30" value="10">
+            <div class="cfg-row"><span>Echo Cancellation</span><span class="badge-on">Active</span></div>
+            <div class="meter-wrap">
+              <span>Mic Level</span>
+              <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Room Modal -->
+  <div class="modal-bg" id="roomModal">
+    <div class="modal">
+      <div class="modal-top">
+        <h3>Room Setup</h3>
+        <button class="btn-icon" id="closeModalBtn"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <p class="modal-label">Create a new room</p>
+          <button class="btn-primary w-full" id="createBtn"><i data-lucide="plus" style="width:16px;height:16px"></i> Create Room</button>
+        </div>
+        <div class="modal-divider">or</div>
+        <div class="modal-section">
+          <p class="modal-label">Join a friend's room</p>
+          <div class="join-row">
+            <input type="text" id="joinInput" placeholder="Paste Room ID...">
+            <button class="btn-primary" id="joinBtn">Join</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

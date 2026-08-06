@@ -1,0 +1,21 @@
+{
+  "name": "sk-watchparty",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "vite": "^6.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
