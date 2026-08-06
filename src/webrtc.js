@@ -5,6 +5,7 @@ export class RTC {
     this.peer = null;
     this.id = null;
     this.conn = null;
+    this.rawCamStream = null;
     this.camStream = null;
     this.screenStream = null;
     this.dsp = new AudioDSP();
@@ -28,7 +29,8 @@ export class RTC {
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' }
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' }
           ]
         }
       };
@@ -65,12 +67,12 @@ export class RTC {
       this.cb.onConnect(c.peer);
       this.cb.onStatus('connected');
 
-      // Send existing active streams to newly connected peer
+      // Send existing active streams to newly connected peer immediately
       if (this.screenStream) {
         this._call(c.peer, this.screenStream, 'screen');
       }
-      if (this.camStream) {
-        this._call(c.peer, this.camStream, 'cam');
+      if (this.rawCamStream) {
+        this._call(c.peer, this.rawCamStream, 'cam');
       }
     });
     c.on('data', d => this.cb.onData(d));
@@ -82,16 +84,17 @@ export class RTC {
 
   _handleCall(call) {
     const type = call.metadata?.type || 'screen';
-    const answerStream = type === 'cam' ? this.camStream : this.screenStream;
+    const answerStream = type === 'cam' ? this.rawCamStream : this.screenStream;
 
-    // Answer call (with local stream if active, otherwise empty answer)
     call.answer(answerStream || undefined);
 
     call.on('stream', remoteStream => {
-      if (type === 'cam') {
-        this.cb.onCam(remoteStream);
-      } else {
-        this.cb.onScreen(remoteStream);
+      if (remoteStream && remoteStream.getTracks().length > 0) {
+        if (type === 'cam') {
+          this.cb.onCam(remoteStream);
+        } else {
+          this.cb.onScreen(remoteStream);
+        }
       }
     });
 
@@ -108,7 +111,6 @@ export class RTC {
     if (!this.peer || !stream) return;
     const call = this.peer.call(targetId, stream, { metadata: { type } });
 
-    // Handle return stream from receiver if receiver answered with a stream
     call.on('stream', remoteStream => {
       if (remoteStream && remoteStream.getTracks().length > 0) {
         if (type === 'cam') {
@@ -152,20 +154,31 @@ export class RTC {
       video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
-    const processed = await this.dsp.process(raw);
-    this.camStream = processed;
+    this.rawCamStream = raw;
+
+    // Apply Audio DSP locally for meter & noise gate
+    try {
+      this.camStream = await this.dsp.process(raw);
+    } catch (e) {
+      this.camStream = raw;
+    }
 
     if (this.conn?.open) {
-      this._call(this.conn.peer, processed, 'cam');
+      this._call(this.conn.peer, raw, 'cam');
     }
-    return processed;
+    return raw;
   }
 
   stopCam() {
+    if (this.rawCamStream) {
+      this.rawCamStream.getTracks().forEach(t => t.stop());
+      this.rawCamStream = null;
+    }
     if (this.camStream) {
       this.camStream.getTracks().forEach(t => t.stop());
       this.camStream = null;
     }
+    this.dsp.cleanup();
     this.cb.onCam(null);
   }
 

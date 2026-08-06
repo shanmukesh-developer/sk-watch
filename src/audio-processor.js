@@ -15,25 +15,36 @@ export class AudioDSP {
     this.gainVal = 1.0;
   }
 
+  cleanup() {
+    if (this.source) {
+      try { this.source.disconnect(); } catch (e) {}
+      this.source = null;
+    }
+  }
+
   async process(rawStream) {
     const track = rawStream.getAudioTracks()[0];
     if (!track) return rawStream;
 
+    this.cleanup();
+
     if (!this.ctx) {
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
     }
-    if (this.ctx.state === 'suspended') await this.ctx.resume();
+    if (this.ctx.state === 'suspended') {
+      await this.ctx.resume().catch(() => {});
+    }
 
     this.source = this.ctx.createMediaStreamSource(rawStream);
 
     // Highpass — kill room hum below 85Hz
     this.hp = this.ctx.createBiquadFilter();
     this.hp.type = 'highpass';
-    this.hp.frequency.value = 85;
+    this.hp.frequency.value = this.enabled ? 85 : 10;
 
     // Compressor — acts as noise gate
     this.comp = this.ctx.createDynamicsCompressor();
-    this.comp.threshold.value = this.threshold;
+    this.comp.threshold.value = this.enabled ? this.threshold : -100;
     this.comp.knee.value = 12;
     this.comp.ratio.value = 8;
     this.comp.attack.value = 0.003;

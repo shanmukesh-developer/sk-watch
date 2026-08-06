@@ -1,7 +1,7 @@
 import { RTC } from './webrtc.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-  lucide.createIcons();
+  if (window.lucide) lucide.createIcons();
 
   // ─── Epic Intro Particle Canvas ───
   const epicIntro = document.getElementById('epicIntro');
@@ -127,6 +127,33 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => { t.classList.remove('in'); t.classList.add('out'); setTimeout(() => t.remove(), 400); }, 3000);
   }
 
+  // ─── PIP Visibility Manager ───
+  function updatePipVisibility() {
+    const hasRemote = remoteCam.srcObject && remoteCam.srcObject.getVideoTracks().some(t => t.readyState === 'live');
+    const hasLocal = localCam.srcObject && localCam.srcObject.getVideoTracks().some(t => t.readyState === 'live');
+
+    if (hasRemote) {
+      remoteCam.style.display = 'block';
+      pipOff.style.display = 'none';
+      if (hasLocal) {
+        localCam.style.display = 'block';
+        localCam.classList.remove('full-pip');
+      } else {
+        localCam.style.display = 'none';
+      }
+    } else if (hasLocal) {
+      remoteCam.style.display = 'none';
+      localCam.style.display = 'block';
+      localCam.classList.add('full-pip');
+      pipOff.style.display = 'none';
+    } else {
+      remoteCam.style.display = 'none';
+      localCam.style.display = 'none';
+      localCam.classList.remove('full-pip');
+      pipOff.style.display = 'flex';
+    }
+  }
+
   // ─── Tabs ───
   document.querySelectorAll('.side-tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -151,6 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
     onDisconnect: () => {
       sysMsg('Partner disconnected.');
       toast('Partner left', 'warn');
+      updatePipVisibility();
     },
     onScreen: (stream) => {
       if (stream) {
@@ -172,11 +200,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (stream) {
         remoteCam.srcObject = stream;
         remoteCam.muted = false;
-        pipOff.style.display = 'none';
         remoteCam.play().catch(err => console.log('Cam playback blocked', err));
+        updatePipVisibility();
+        toast('Partner camera connected!', 'ok');
       } else {
         remoteCam.srcObject = null;
-        pipOff.style.display = 'flex';
+        updatePipVisibility();
       }
     },
     onData: (d) => handleData(d)
@@ -227,13 +256,13 @@ document.addEventListener('DOMContentLoaded', () => {
       sharing = false;
       shareBtn.innerHTML = `<i data-lucide="monitor" style="width:18px;height:18px"></i> Share Screen`;
       shareBtn.classList.remove('btn-danger');
-      lucide.createIcons();
+      if (window.lucide) lucide.createIcons();
       return;
     }
     try {
       const s = await rtc.shareScreen();
       screenVideo.srcObject = s;
-      screenVideo.muted = true; // Mute local preview to prevent audio echo loop
+      screenVideo.muted = true; // Mute local preview to avoid local echo
       screenVideo.style.display = 'block';
       screenVideo.play().catch(()=>{});
       localVideo.style.display = 'none';
@@ -242,7 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
       sharing = true;
       shareBtn.innerHTML = `<i data-lucide="monitor-off" style="width:18px;height:18px"></i> Stop Sharing`;
       shareBtn.classList.add('btn-danger');
-      lucide.createIcons();
+      if (window.lucide) lucide.createIcons();
       sysMsg('🖥️ Sharing screen with HD audio!');
       toast('Screen sharing started!', 'ok');
 
@@ -253,7 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
         welcome.style.display = 'flex';
         shareBtn.innerHTML = `<i data-lucide="monitor" style="width:18px;height:18px"></i> Share Screen`;
         shareBtn.classList.remove('btn-danger');
-        lucide.createIcons();
+        if (window.lucide) lucide.createIcons();
       };
     } catch (e) { /* cancelled */ }
   });
@@ -262,12 +291,29 @@ document.addEventListener('DOMContentLoaded', () => {
   fileIn.addEventListener('change', e => {
     const f = e.target.files[0];
     if (!f) return;
-    localVideo.src = URL.createObjectURL(f);
+    const objectUrl = URL.createObjectURL(f);
+    localVideo.src = objectUrl;
+    localVideo.muted = false;
+    localVideo.volume = volSlider ? volSlider.value / 100 : 1;
     localVideo.style.display = 'block';
     screenVideo.style.display = 'none';
     welcome.style.display = 'none';
     syncMode = true;
     seekBar.disabled = false;
+
+    localVideo.addEventListener('loadedmetadata', () => {
+      const dur = localVideo.duration || 1;
+      timeLabel.textContent = `00:00 / ${fmt(dur)}`;
+      seekBar.value = 0;
+    }, { once: true });
+
+    localVideo.play().then(() => {
+      playPauseBtn.innerHTML = `<i data-lucide="pause" style="width:18px;height:18px"></i>`;
+      if (window.lucide) lucide.createIcons();
+    }).catch(err => {
+      console.log('Local video play click required', err);
+    });
+
     sysMsg(`🎬 Loaded: ${f.name}`);
     toast(`Loaded ${f.name}`, 'ok');
   });
@@ -285,8 +331,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  localVideo.addEventListener('play', () => { playPauseBtn.innerHTML = `<i data-lucide="pause" style="width:18px;height:18px"></i>`; lucide.createIcons(); });
-  localVideo.addEventListener('pause', () => { playPauseBtn.innerHTML = `<i data-lucide="play" style="width:18px;height:18px"></i>`; lucide.createIcons(); });
+  localVideo.addEventListener('play', () => { playPauseBtn.innerHTML = `<i data-lucide="pause" style="width:18px;height:18px"></i>`; if (window.lucide) lucide.createIcons(); });
+  localVideo.addEventListener('pause', () => { playPauseBtn.innerHTML = `<i data-lucide="play" style="width:18px;height:18px"></i>`; if (window.lucide) lucide.createIcons(); });
 
   localVideo.addEventListener('timeupdate', () => {
     if (!syncMode) return;
@@ -314,7 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
     screenVideo.muted = m;
     localVideo.muted = m;
     volBtn.innerHTML = m ? `<i data-lucide="volume-x" style="width:16px;height:16px"></i>` : `<i data-lucide="volume-2" style="width:16px;height:16px"></i>`;
-    lucide.createIcons();
+    if (window.lucide) lucide.createIcons();
   });
 
   // ─── Camera ───
@@ -323,36 +369,49 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const s = await rtc.startCam();
         localCam.srcObject = s;
-        pipOff.style.display = 'none';
+        localCam.muted = true; // Mute local camera self preview
+        localCam.play().catch(()=>{});
         camBtn.classList.add('active');
         camBtn.classList.remove('off');
         micBtn.classList.add('active');
+        micBtn.classList.remove('off');
         camOn = true;
         micOn = true;
-        toast('Camera on', 'ok');
-      } catch { toast('Camera access denied', 'err'); }
+        updatePipVisibility();
+        toast('Camera & Mic active', 'ok');
+      } catch (err) {
+        toast('Camera access denied or unavailable', 'err');
+      }
     } else {
       rtc.stopCam();
       localCam.srcObject = null;
       camBtn.classList.remove('active');
       camBtn.classList.add('off');
       micBtn.classList.remove('active');
+      micBtn.classList.add('off');
       camOn = false;
       micOn = false;
+      updatePipVisibility();
+      toast('Camera turned off', 'info');
     }
   });
 
   // ─── Mic ───
   micBtn.addEventListener('click', () => {
-    if (!rtc.camStream) return toast('Turn on camera first', 'warn');
-    const tk = rtc.camStream.getAudioTracks()[0];
-    if (!tk) return;
-    tk.enabled = !tk.enabled;
-    micOn = tk.enabled;
+    if (!rtc.rawCamStream) return toast('Turn on camera first', 'warn');
+    const tracks = rtc.rawCamStream.getAudioTracks();
+    if (!tracks || tracks.length === 0) return toast('No microphone track found', 'warn');
+    const enabled = !tracks[0].enabled;
+    tracks.forEach(t => t.enabled = enabled);
+    if (rtc.camStream) {
+      rtc.camStream.getAudioTracks().forEach(t => t.enabled = enabled);
+    }
+    micOn = enabled;
     micBtn.classList.toggle('active', micOn);
     micBtn.classList.toggle('off', !micOn);
     micBtn.innerHTML = micOn ? `<i data-lucide="mic" style="width:16px;height:16px"></i>` : `<i data-lucide="mic-off" style="width:16px;height:16px"></i>`;
-    lucide.createIcons();
+    if (window.lucide) lucide.createIcons();
+    toast(micOn ? 'Microphone unmuted' : 'Microphone muted', micOn ? 'info' : 'warn');
   });
 
   // ─── PIP toggle ───
@@ -362,7 +421,7 @@ document.addEventListener('DOMContentLoaded', () => {
     pip.classList.toggle('mini', pipMini);
     pipVideoWrap.style.display = pipMini ? 'none' : 'block';
     pipToggle.innerHTML = pipMini ? `<i data-lucide="plus" style="width:12px;height:12px"></i>` : `<i data-lucide="minus" style="width:12px;height:12px"></i>`;
-    lucide.createIcons();
+    if (window.lucide) lucide.createIcons();
   });
 
   // ─── Noise Filter Controls ───
