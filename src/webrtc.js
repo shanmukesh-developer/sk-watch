@@ -30,7 +30,8 @@ export class RTC {
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
             { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' }
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' }
           ]
         }
       };
@@ -45,12 +46,20 @@ export class RTC {
 
       this.peer.on('connection', c => this._handleConn(c));
       this.peer.on('call', c => this._handleCall(c));
+
       this.peer.on('error', e => {
         console.error('[WebRTC Error]', e);
-        this.cb.onStatus('error', e.message);
+        const msg = e.type === 'peer-unavailable' ? 'Room ID not found' : e.message;
+        this.cb.onStatus('error', msg);
         reject(e);
       });
-      this.peer.on('disconnected', () => this.cb.onStatus('disconnected'));
+
+      this.peer.on('disconnected', () => {
+        this.cb.onStatus('disconnected');
+        if (this.peer && !this.peer.destroyed) {
+          try { this.peer.reconnect(); } catch (err) {}
+        }
+      });
     });
   }
 
@@ -75,10 +84,16 @@ export class RTC {
         this._call(c.peer, this.rawCamStream, 'cam');
       }
     });
+
     c.on('data', d => this.cb.onData(d));
+
     c.on('close', () => {
       this.cb.onDisconnect();
       this.cb.onStatus('disconnected');
+    });
+
+    c.on('error', err => {
+      console.error('[Data Connection Error]', err);
     });
   }
 
@@ -105,6 +120,10 @@ export class RTC {
         this.cb.onScreen(null);
       }
     });
+
+    call.on('error', err => {
+      console.error('[Media Call Error]', err);
+    });
   }
 
   _call(targetId, stream, type) {
@@ -119,6 +138,10 @@ export class RTC {
           this.cb.onScreen(remoteStream);
         }
       }
+    });
+
+    call.on('error', err => {
+      console.error('[Media Call Error]', err);
     });
   }
 
@@ -156,7 +179,6 @@ export class RTC {
     });
     this.rawCamStream = raw;
 
-    // Apply Audio DSP locally for meter & noise gate
     try {
       this.camStream = await this.dsp.process(raw);
     } catch (e) {
