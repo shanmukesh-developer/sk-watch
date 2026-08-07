@@ -59,23 +59,7 @@ export class RTC {
         { urls: 'stun:stun4.l.google.com:19302' },
         { urls: 'stun:stun.services.mozilla.com:3478' },
         { urls: 'stun:global.stun.twilio.com:3478' },
-        { urls: 'stun:stun.cloudflare.com:3478' },
-        { urls: 'stun:openrelay.metered.ca:80' },
-        {
-          urls: 'turn:openrelay.metered.ca:80',
-          username: 'openrelayproject',
-          credential: 'openrelayproject'
-        },
-        {
-          urls: 'turn:openrelay.metered.ca:443',
-          username: 'openrelayproject',
-          credential: 'openrelayproject'
-        },
-        {
-          urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-          username: 'openrelayproject',
-          credential: 'openrelayproject'
-        }
+        { urls: 'stun:stun.cloudflare.com:3478' }
       ];
 
       // Self-hosted PeerServer options (/peerjs path)
@@ -144,6 +128,12 @@ export class RTC {
             console.warn(`[RTC Signaling Warning] ${config.name} error:`, e.type, e.message);
             if (e.type === 'peer-unavailable') {
               this.cb.onStatus('error', 'Room ID not found or host is offline');
+              return;
+            }
+            if (e.type === 'unavailable-id') {
+              console.warn(`[RTC Signaling Warning] ID ${config.id} in use, trying auto-generated ID...`);
+              config.id = null;
+              if (!resolved) setTimeout(tryNextAttempt, 200);
               return;
             }
             if (!resolved) {
@@ -650,30 +640,41 @@ export class RTC {
 
     if (openPeers.size === 0) return s;
 
-    // Check if active call exists and attempt seamless replaceTrack if senders match
+    // Check if active call exists and attempt seamless replaceTrack / addTrack
     let replaced = false;
     if (this.screenCall && this.screenCall.peerConnection) {
       try {
-        const senders = this.screenCall.peerConnection.getSenders();
+        const pc = this.screenCall.peerConnection;
+        const senders = pc.getSenders();
         const vTrack = s.getVideoTracks()[0];
         const aTrack = s.getAudioTracks()[0];
 
-        const hasVideoSender = senders.some(sender => sender.track?.kind === 'video');
-        const hasAudioSender = senders.some(sender => sender.track?.kind === 'audio');
+        let vReplaced = false;
+        let aReplaced = false;
 
-        const videoMatches = !vTrack || hasVideoSender;
-        const audioMatches = !aTrack || hasAudioSender;
+        senders.forEach(sender => {
+          if (sender.track?.kind === 'video' && vTrack) {
+            sender.replaceTrack(vTrack);
+            vReplaced = true;
+          } else if (sender.track?.kind === 'audio' && aTrack) {
+            sender.replaceTrack(aTrack);
+            aReplaced = true;
+          }
+        });
 
-        if (videoMatches && audioMatches) {
-          senders.forEach(sender => {
-            if (sender.track?.kind === 'video' && vTrack) {
-              sender.replaceTrack(vTrack);
-            } else if (sender.track?.kind === 'audio' && aTrack) {
-              sender.replaceTrack(aTrack);
-            }
-          });
-          replaced = true;
+        if (aTrack && !aReplaced && pc.addTrack) {
+          try {
+            pc.addTrack(aTrack, s);
+            aReplaced = true;
+          } catch (e) {}
         }
+        if (vTrack && !vReplaced && pc.addTrack) {
+          try {
+            pc.addTrack(vTrack, s);
+            vReplaced = true;
+          } catch (e) {}
+        }
+        replaced = vReplaced || aReplaced;
       } catch (e) {
         replaced = false;
       }

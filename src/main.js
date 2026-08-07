@@ -604,9 +604,16 @@ document.addEventListener('DOMContentLoaded', () => {
   function enableMediaPlayback() {
     [screenVideo, localVideo, remoteCam, localCam, pipRemoteCam, pipLocalCam].forEach(v => {
       if (v && (v.srcObject || v.src)) {
+        v.muted = false;
         v.play().catch(() => {});
       }
     });
+    if (ytPlayer && typeof ytPlayer.playVideo === 'function') {
+      try {
+        if (typeof ytPlayer.unMute === 'function') ytPlayer.unMute();
+        ytPlayer.playVideo();
+      } catch (e) {}
+    }
     if (rtc.dsp && rtc.dsp.ctx && rtc.dsp.ctx.state === 'suspended') {
       rtc.dsp.ctx.resume().catch(() => {});
     }
@@ -616,6 +623,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (tapUnmute) {
     tapUnmute.addEventListener('click', enableMediaPlayback);
     document.addEventListener('touchstart', enableMediaPlayback, { once: true });
+    document.addEventListener('click', enableMediaPlayback, { once: true });
   }
 
   // ─── RTC Setup ───
@@ -665,11 +673,13 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     onScreen: (stream) => {
       if (stream) {
+        const hasAudio = stream.getAudioTracks().length > 0;
         screenVideo.srcObject = stream;
         screenVideo.muted = false;
         screenVideo.volume = volSlider ? (volSlider.value / 100) * (remoteVolSlider ? remoteVolSlider.value / 100 : 1) : 1;
         screenVideo.style.display = 'block';
         localVideo.style.display = 'none';
+        if (youtubePlayer) youtubePlayer.style.display = 'none';
         cardMainStream.style.display = 'flex';
         welcome.style.display = 'none';
         setViewMode('stage');
@@ -677,7 +687,7 @@ document.addEventListener('DOMContentLoaded', () => {
           console.log('Auto-play blocked, tap banner to enable', err);
           if (tapUnmute) tapUnmute.style.display = 'flex';
         });
-        toast('Receiving HD screen & audio!', 'ok');
+        toast(hasAudio ? 'Receiving HD screen & audio!' : 'Receiving HD screen (no audio)', hasAudio ? 'ok' : 'info');
         showNotification('SK WatchParty', 'Partner started screen sharing!');
         if (diagStream) diagStream.textContent = 'Screen Share';
       } else {
@@ -1080,6 +1090,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ─── Web Video URL, YouTube & HLS Streamer ───
   let ytPlayer = null;
   let isYouTubeMode = false;
+  let isSyncingFromPeer = false;
 
   function extractYouTubeId(url) {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
@@ -1106,9 +1117,10 @@ document.addEventListener('DOMContentLoaded', () => {
           height: '100%',
           width: '100%',
           videoId: ytId,
-          playerVars: { autoplay: 1, controls: 1, rel: 0 },
+          playerVars: { autoplay: 1, controls: 1, rel: 0, enablejsapi: 1, playsinline: 1, origin: window.location.origin },
           events: {
             onStateChange: (event) => {
+              if (isSyncingFromPeer) return;
               const curTime = (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') ? ytPlayer.getCurrentTime() : 0;
               if (event.data === window.YT.PlayerState.PLAYING) {
                 rtc.send('SYNC', { a: 'play', t: curTime, isYt: true });
@@ -1283,6 +1295,7 @@ document.addEventListener('DOMContentLoaded', () => {
       screenVideo.srcObject = s;
       screenVideo.muted = true;
       screenVideo.style.display = 'block';
+      if (youtubePlayer) youtubePlayer.style.display = 'none';
       cardMainStream.style.display = 'flex';
       mainStreamLabel.innerHTML = `<i data-lucide="monitor" style="width:13px;height:13px"></i> HD Screen Share`;
       screenVideo.play().catch(()=>{});
@@ -1295,7 +1308,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (window.lucide) lucide.createIcons();
       setViewMode('stage');
       sysMsg('🖥️ Sharing screen!');
-      toast('Screen sharing started!', 'ok');
+      const hasAudioTrack = s.getAudioTracks().length > 0;
+      if (hasAudioTrack) {
+        toast('Screen sharing started with Tab/System Audio!', 'ok');
+      } else {
+        toast('Screen sharing started. (Tip: Check "Also share tab audio" when sharing Chrome Tab for sound!)', 'info');
+      }
 
       const vTrack = s.getVideoTracks()[0];
       if (vTrack) {
@@ -2189,6 +2207,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (welcome) welcome.style.display = 'none';
           }
           if (d.payload.isYt && ytPlayer) {
+            isSyncingFromPeer = true;
             if (d.payload.a === 'play') {
               if (typeof ytPlayer.seekTo === 'function') ytPlayer.seekTo(d.payload.t, true);
               if (typeof ytPlayer.playVideo === 'function') ytPlayer.playVideo();
@@ -2196,6 +2215,7 @@ document.addEventListener('DOMContentLoaded', () => {
               if (typeof ytPlayer.seekTo === 'function') ytPlayer.seekTo(d.payload.t, true);
               if (typeof ytPlayer.pauseVideo === 'function') ytPlayer.pauseVideo();
             }
+            setTimeout(() => { isSyncingFromPeer = false; }, 1000);
           } else {
             if (d.payload.a === 'play') {
               localVideo.currentTime = d.payload.t;
@@ -2345,6 +2365,58 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!document.fullscreenElement) el.requestFullscreen?.();
     else document.exitFullscreen?.();
   });
+
+  // ─── Mobile Touch Gestures Engine (Double-tap Seek & Dock Toggle) ───
+  let lastTapTime = 0;
+  let tapTimer = null;
+  const controlsDock = $('controls');
+
+  if (screenEl) {
+    screenEl.addEventListener('click', e => {
+      if (e.target.closest('#controls') || e.target.closest('#drawPalette') || e.target.closest('.welcome') || e.target.closest('.modal-bg')) return;
+      const now = Date.now();
+      const rect = screenEl.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const ratio = clickX / rect.width;
+
+      if (now - lastTapTime < 300) {
+        clearTimeout(tapTimer);
+        // Double tap gesture
+        if (ratio < 0.35) {
+          if (syncMode) {
+            localVideo.currentTime = Math.max(0, localVideo.currentTime - 10);
+            rtc.send('SYNC', { a: 'seek', t: localVideo.currentTime });
+          }
+          showGestureRipple('left', '-10s');
+          toast('Skipped back 10s', 'info');
+        } else if (ratio > 0.65) {
+          if (syncMode && localVideo.duration) {
+            localVideo.currentTime = Math.min(localVideo.duration, localVideo.currentTime + 10);
+            rtc.send('SYNC', { a: 'seek', t: localVideo.currentTime });
+          }
+          showGestureRipple('right', '+10s');
+          toast('Skipped forward 10s', 'info');
+        }
+      } else {
+        tapTimer = setTimeout(() => {
+          // Single tap gesture: toggle controls visibility on mobile
+          if (controlsDock && window.innerWidth <= 768) {
+            controlsDock.classList.toggle('dock-hidden');
+          }
+        }, 300);
+      }
+      lastTapTime = now;
+    });
+  }
+
+  function showGestureRipple(side, text) {
+    if (!screenEl) return;
+    const ripple = document.createElement('div');
+    ripple.className = `gesture-ripple ${side}`;
+    ripple.textContent = text;
+    screenEl.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 600);
+  }
 
   // ─── Theater Mode ───
   theaterBtn.addEventListener('click', () => {
