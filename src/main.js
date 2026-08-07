@@ -193,15 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
     fetch('/ping').catch(() => {});
   }, 13 * 60 * 1000);
 
-  // ─── State ───
-  let roomId = null;
-  let camOn = false;
-  let micOn = true;
-  let syncMode = false;
-  let sharing = false;
-  let pipMini = false;
-
-  // ─── DOM ───
+  // ─── DOM Elements ───
   const $ = id => document.getElementById(id);
 
   const statusDot = $('statusDot');
@@ -218,18 +210,37 @@ document.addEventListener('DOMContentLoaded', () => {
   const joinBtn = $('joinBtn');
   const theaterBtn = $('theaterBtn');
 
+  const viewGridBtn = $('viewGridBtn');
+  const viewStageBtn = $('viewStageBtn');
+  const viewPipBtn = $('viewPipBtn');
+  const screenEl = $('screen');
+  const cardMainStream = $('cardMainStream');
+  const mainStreamLabel = $('mainStreamLabel');
+
   const screenVideo = $('screenVideo');
   const localVideo = $('localVideo');
   const welcome = $('welcome');
   const shareBtn = $('shareBtn');
   const fileIn = $('fileIn');
 
+  const cardLocal = $('cardLocal');
+  const localCam = $('localCam');
+  const localAvatar = $('localAvatar');
+  const localHalo = $('localHalo');
+  const localMicBadge = $('localMicBadge');
+
+  const cardRemote = $('cardRemote');
+  const remoteCam = $('remoteCam');
+  const remoteAvatar = $('remoteAvatar');
+  const remoteHalo = $('remoteHalo');
+  const remoteMicBadge = $('remoteMicBadge');
+
   const pip = $('pip');
   const pipDrag = $('pipDrag');
   const pipToggle = $('pipToggle');
   const pipVideoWrap = $('pipVideoWrap');
-  const remoteCam = $('remoteCam');
-  const localCam = $('localCam');
+  const pipRemoteCam = $('pipRemoteCam');
+  const pipLocalCam = $('pipLocalCam');
   const pipOff = $('pipOff');
   const pipRing = $('pipRing');
 
@@ -265,31 +276,73 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => { t.classList.remove('in'); t.classList.add('out'); setTimeout(() => t.remove(), 400); }, 3000);
   }
 
-  // ─── PIP Visibility Manager ───
-  function updatePipVisibility() {
-    const hasRemote = remoteCam.srcObject && remoteCam.srcObject.getVideoTracks().some(t => t.readyState === 'live');
-    const hasLocal = localCam.srcObject && localCam.srcObject.getVideoTracks().some(t => t.readyState === 'live');
+  // ─── Zoom View Mode Switcher ───
+  let currentViewMode = 'grid';
+  function setViewMode(mode) {
+    currentViewMode = mode;
+    screenEl.classList.remove('zoom-grid-view', 'zoom-stage-view', 'zoom-pip-view');
+    viewGridBtn?.classList.remove('active');
+    viewStageBtn?.classList.remove('active');
+    viewPipBtn?.classList.remove('active');
 
-    if (hasRemote) {
-      remoteCam.style.display = 'block';
-      pipOff.style.display = 'none';
-      if (hasLocal) {
-        localCam.style.display = 'block';
-        localCam.classList.remove('full-pip');
-      } else {
-        localCam.style.display = 'none';
-      }
-    } else if (hasLocal) {
-      remoteCam.style.display = 'none';
+    if (mode === 'grid') {
+      screenEl.classList.add('zoom-grid-view');
+      viewGridBtn?.classList.add('active');
+      pip.style.display = 'none';
+      toast('Zoom Grid View active', 'info');
+    } else if (mode === 'stage') {
+      screenEl.classList.add('zoom-stage-view');
+      viewStageBtn?.classList.add('active');
+      pip.style.display = 'none';
+      toast('Spotlight Stage View active', 'info');
+    } else if (mode === 'pip') {
+      screenEl.classList.add('zoom-pip-view');
+      viewPipBtn?.classList.add('active');
+      pip.style.display = 'flex';
+      toast('Picture-in-Picture mode active', 'info');
+    }
+  }
+
+  viewGridBtn?.addEventListener('click', () => setViewMode('grid'));
+  viewStageBtn?.addEventListener('click', () => setViewMode('stage'));
+  viewPipBtn?.addEventListener('click', () => setViewMode('pip'));
+
+  // ─── Participant Cards & Avatar Fallback Manager ───
+  function updateParticipantCards() {
+    const hasLocalCam = localCam.srcObject && localCam.srcObject.getVideoTracks().some(t => t.readyState === 'live');
+    const hasRemoteCam = remoteCam.srcObject && remoteCam.srcObject.getVideoTracks().some(t => t.readyState === 'live');
+
+    // Local Camera Tile
+    if (hasLocalCam && camOn) {
       localCam.style.display = 'block';
-      localCam.classList.add('full-pip');
+      localAvatar.style.display = 'none';
+    } else {
+      localCam.style.display = 'none';
+      localAvatar.style.display = 'flex';
+    }
+    localMicBadge.innerHTML = micOn ? `<i data-lucide="mic" style="width:13px;height:13px"></i>` : `<i data-lucide="mic-off" style="width:13px;height:13px"></i>`;
+    localMicBadge.className = `mic-status ${micOn ? '' : 'off'}`;
+
+    // Remote Camera Tile
+    if (hasRemoteCam) {
+      remoteCam.style.display = 'block';
+      remoteAvatar.style.display = 'none';
       pipOff.style.display = 'none';
     } else {
       remoteCam.style.display = 'none';
-      localCam.style.display = 'none';
-      localCam.classList.remove('full-pip');
+      remoteAvatar.style.display = 'flex';
       pipOff.style.display = 'flex';
     }
+
+    // Sync to PIP video streams if in PIP mode
+    if (pipRemoteCam && pipRemoteCam.srcObject !== remoteCam.srcObject) {
+      pipRemoteCam.srcObject = remoteCam.srcObject;
+    }
+    if (pipLocalCam && pipLocalCam.srcObject !== localCam.srcObject) {
+      pipLocalCam.srcObject = localCam.srcObject;
+    }
+
+    if (window.lucide) lucide.createIcons();
   }
 
   // ─── Tabs ───
@@ -305,8 +358,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // ─── Mobile / Autoplay Unmute Handler ───
   const tapUnmute = $('tapUnmute');
   function enableMediaPlayback() {
-    [screenVideo, localVideo, remoteCam, localCam].forEach(v => {
-      if (v && v.srcObject || v.src) {
+    [screenVideo, localVideo, remoteCam, localCam, pipRemoteCam, pipLocalCam].forEach(v => {
+      if (v && (v.srcObject || v.src)) {
         v.play().catch(() => {});
       }
     });
@@ -331,7 +384,6 @@ document.addEventListener('DOMContentLoaded', () => {
     onConnect: (pid) => {
       sysMsg('🎉 Partner connected!');
       toast('Partner joined!', 'ok');
-      // If host is playing a synced local video, send current sync position to partner
       if (syncMode && localVideo && !localVideo.paused) {
         rtc.send('SYNC', { a: 'play', t: localVideo.currentTime });
       }
@@ -339,7 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
     onDisconnect: () => {
       sysMsg('Partner disconnected.');
       toast('Partner left', 'warn');
-      updatePipVisibility();
+      updateParticipantCards();
     },
     onScreen: (stream) => {
       if (stream) {
@@ -348,7 +400,9 @@ document.addEventListener('DOMContentLoaded', () => {
         screenVideo.volume = volSlider ? volSlider.value / 100 : 1;
         screenVideo.style.display = 'block';
         localVideo.style.display = 'none';
+        cardMainStream.style.display = 'flex';
         welcome.style.display = 'none';
+        setViewMode('stage'); // Switch to Spotlight view when receiving screen share
         screenVideo.play().catch(err => {
           console.log('Auto-play blocked, tap banner to enable', err);
           if (tapUnmute) tapUnmute.style.display = 'flex';
@@ -357,7 +411,11 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         screenVideo.srcObject = null;
         screenVideo.style.display = 'none';
-        if (!syncMode) welcome.style.display = 'flex';
+        cardMainStream.style.display = 'none';
+        if (!syncMode) {
+          welcome.style.display = 'flex';
+          setViewMode('grid');
+        }
       }
     },
     onCam: (stream) => {
@@ -368,11 +426,11 @@ document.addEventListener('DOMContentLoaded', () => {
           console.log('Cam playback blocked, tap banner to enable', err);
           if (tapUnmute) tapUnmute.style.display = 'flex';
         });
-        updatePipVisibility();
+        updateParticipantCards();
         toast('Partner camera connected!', 'ok');
       } else {
         remoteCam.srcObject = null;
-        updatePipVisibility();
+        updateParticipantCards();
       }
     },
     onData: (d) => handleData(d)
@@ -419,18 +477,22 @@ document.addEventListener('DOMContentLoaded', () => {
       rtc.stopScreen();
       screenVideo.srcObject = null;
       screenVideo.style.display = 'none';
+      cardMainStream.style.display = 'none';
       welcome.style.display = 'flex';
       sharing = false;
       shareBtn.innerHTML = `<i data-lucide="monitor" style="width:18px;height:18px"></i> Share Screen`;
       shareBtn.classList.remove('btn-danger');
       if (window.lucide) lucide.createIcons();
+      setViewMode('grid');
       return;
     }
     try {
       const s = await rtc.shareScreen();
       screenVideo.srcObject = s;
-      screenVideo.muted = true; // Mute local preview to avoid local echo
+      screenVideo.muted = true;
       screenVideo.style.display = 'block';
+      cardMainStream.style.display = 'flex';
+      mainStreamLabel.innerHTML = `<i data-lucide="monitor" style="width:13px;height:13px"></i> HD Screen Share`;
       screenVideo.play().catch(()=>{});
       localVideo.style.display = 'none';
       welcome.style.display = 'none';
@@ -439,6 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
       shareBtn.innerHTML = `<i data-lucide="monitor-off" style="width:18px;height:18px"></i> Stop Sharing`;
       shareBtn.classList.add('btn-danger');
       if (window.lucide) lucide.createIcons();
+      setViewMode('stage');
       sysMsg('🖥️ Sharing screen with HD audio!');
       toast('Screen sharing started!', 'ok');
 
@@ -446,15 +509,25 @@ document.addEventListener('DOMContentLoaded', () => {
         sharing = false;
         screenVideo.srcObject = null;
         screenVideo.style.display = 'none';
+        cardMainStream.style.display = 'none';
         welcome.style.display = 'flex';
         shareBtn.innerHTML = `<i data-lucide="monitor" style="width:18px;height:18px"></i> Share Screen`;
         shareBtn.classList.remove('btn-danger');
         if (window.lucide) lucide.createIcons();
+        setViewMode('grid');
       };
     } catch (e) { /* cancelled */ }
   });
 
-  // ─── Local Video Sync ───
+  // ─── Local Video Sync & Replay Stream Fix ───
+  function attachAndStreamLocalVideo() {
+    if (!localVideo || !syncMode) return;
+    const fileStream = localVideo.captureStream ? localVideo.captureStream() : (localVideo.mozCaptureStream ? localVideo.mozCaptureStream() : null);
+    if (fileStream) {
+      rtc.rebindCustomStream(fileStream);
+    }
+  }
+
   fileIn.addEventListener('change', async e => {
     const f = e.target.files[0];
     if (!f) return;
@@ -464,9 +537,12 @@ document.addEventListener('DOMContentLoaded', () => {
     localVideo.volume = volSlider ? volSlider.value / 100 : 1;
     localVideo.style.display = 'block';
     screenVideo.style.display = 'none';
+    cardMainStream.style.display = 'flex';
+    mainStreamLabel.innerHTML = `<i data-lucide="file-video" style="width:13px;height:13px"></i> ${f.name}`;
     welcome.style.display = 'none';
     syncMode = true;
     seekBar.disabled = false;
+    setViewMode('stage');
 
     localVideo.addEventListener('loadedmetadata', () => {
       const dur = localVideo.duration || 1;
@@ -478,22 +554,50 @@ document.addEventListener('DOMContentLoaded', () => {
       await localVideo.play();
       playPauseBtn.innerHTML = `<i data-lucide="pause" style="width:18px;height:18px"></i>`;
       if (window.lucide) lucide.createIcons();
-
-      // Stream local file live to partner via WebRTC captureStream
-      const fileStream = localVideo.captureStream ? localVideo.captureStream() : (localVideo.mozCaptureStream ? localVideo.mozCaptureStream() : null);
-      if (fileStream) {
-        rtc.shareCustomStream(fileStream);
-        sysMsg(`🎬 Sharing local video stream: ${f.name}`);
-        toast(`Streaming ${f.name} live to partner!`, 'ok');
-      } else {
-        sysMsg(`🎬 Loaded: ${f.name}`);
-        toast(`Loaded ${f.name}`, 'ok');
-      }
+      attachAndStreamLocalVideo();
+      sysMsg(`🎬 Sharing local video stream: ${f.name}`);
+      toast(`Streaming ${f.name} live to partner!`, 'ok');
     } catch (err) {
       console.log('Local video play click required', err);
       sysMsg(`🎬 Loaded: ${f.name}`);
       toast(`Loaded ${f.name}`, 'ok');
     }
+  });
+
+  localVideo.addEventListener('play', () => {
+    playPauseBtn.innerHTML = `<i data-lucide="pause" style="width:18px;height:18px"></i>`;
+    if (window.lucide) lucide.createIcons();
+    attachAndStreamLocalVideo();
+  });
+
+  localVideo.addEventListener('pause', () => {
+    playPauseBtn.innerHTML = `<i data-lucide="play" style="width:18px;height:18px"></i>`;
+    if (window.lucide) lucide.createIcons();
+  });
+
+  localVideo.addEventListener('seeked', () => {
+    attachAndStreamLocalVideo();
+  });
+
+  localVideo.addEventListener('ended', () => {
+    playPauseBtn.innerHTML = `<i data-lucide="play" style="width:18px;height:18px"></i>`;
+    if (window.lucide) lucide.createIcons();
+    if (syncMode) rtc.send('SYNC', { a: 'pause', t: localVideo.duration || 0 });
+  });
+
+  localVideo.addEventListener('timeupdate', () => {
+    if (!syncMode) return;
+    const c = localVideo.currentTime, d = localVideo.duration || 1;
+    seekBar.value = Math.round((c / d) * 1000);
+    timeLabel.textContent = `${fmt(c)} / ${fmt(d)}`;
+  });
+
+  seekBar.addEventListener('input', e => {
+    if (!syncMode || !localVideo.duration) return;
+    const t = (e.target.value / 1000) * localVideo.duration;
+    localVideo.currentTime = t;
+    rtc.send('SYNC', { a: 'seek', t });
+    attachAndStreamLocalVideo();
   });
 
   // ─── Play/Pause ───
@@ -508,23 +612,6 @@ document.addEventListener('DOMContentLoaded', () => {
       rtc.send('SYNC', { a: 'pause', t: localVideo.currentTime });
     }
   }
-
-  localVideo.addEventListener('play', () => { playPauseBtn.innerHTML = `<i data-lucide="pause" style="width:18px;height:18px"></i>`; if (window.lucide) lucide.createIcons(); });
-  localVideo.addEventListener('pause', () => { playPauseBtn.innerHTML = `<i data-lucide="play" style="width:18px;height:18px"></i>`; if (window.lucide) lucide.createIcons(); });
-
-  localVideo.addEventListener('timeupdate', () => {
-    if (!syncMode) return;
-    const c = localVideo.currentTime, d = localVideo.duration || 1;
-    seekBar.value = Math.round((c / d) * 1000);
-    timeLabel.textContent = `${fmt(c)} / ${fmt(d)}`;
-  });
-
-  seekBar.addEventListener('input', e => {
-    if (!syncMode || !localVideo.duration) return;
-    const t = (e.target.value / 1000) * localVideo.duration;
-    localVideo.currentTime = t;
-    rtc.send('SYNC', { a: 'seek', t });
-  });
 
   // ─── Volume ───
   volSlider.addEventListener('input', e => {
@@ -547,7 +634,7 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const s = await rtc.startCam();
         localCam.srcObject = s;
-        localCam.muted = true; // Mute local camera self preview
+        localCam.muted = true;
         localCam.play().catch(()=>{});
         camBtn.classList.add('active');
         camBtn.classList.remove('off');
@@ -555,7 +642,7 @@ document.addEventListener('DOMContentLoaded', () => {
         micBtn.classList.remove('off');
         camOn = true;
         micOn = true;
-        updatePipVisibility();
+        updateParticipantCards();
         toast('Camera & Mic active', 'ok');
       } catch (err) {
         toast('Camera access denied or unavailable', 'err');
@@ -569,7 +656,7 @@ document.addEventListener('DOMContentLoaded', () => {
       micBtn.classList.add('off');
       camOn = false;
       micOn = false;
-      updatePipVisibility();
+      updateParticipantCards();
       toast('Camera turned off', 'info');
     }
   });
@@ -589,6 +676,7 @@ document.addEventListener('DOMContentLoaded', () => {
     micBtn.classList.toggle('off', !micOn);
     micBtn.innerHTML = micOn ? `<i data-lucide="mic" style="width:16px;height:16px"></i>` : `<i data-lucide="mic-off" style="width:16px;height:16px"></i>`;
     if (window.lucide) lucide.createIcons();
+    updateParticipantCards();
     toast(micOn ? 'Microphone unmuted' : 'Microphone muted', micOn ? 'info' : 'warn');
   });
 
@@ -622,19 +710,25 @@ document.addEventListener('DOMContentLoaded', () => {
     rtc.dsp.setGain(v);
   });
 
-  // ─── VU Meter ───
+  // ─── VU Meter & Speaking Halo Ring ───
   function tickMeter() {
     if (camOn && micOn) {
       const lv = rtc.dsp.getLevel();
       meterFill.style.width = lv + '%';
-      pipRing.classList.toggle('speaking', lv > 12);
+      const isSpeaking = lv > 12;
+      pipRing.classList.toggle('speaking', isSpeaking);
+      cardLocal?.classList.toggle('speaking', isSpeaking);
     } else {
       meterFill.style.width = '0%';
       pipRing.classList.remove('speaking');
+      cardLocal?.classList.remove('speaking');
     }
     requestAnimationFrame(tickMeter);
   }
   requestAnimationFrame(tickMeter);
+
+  // Initial call to set participant cards
+  updateParticipantCards();
 
   // ─── Emojis & Soundboard FX ───
   document.querySelectorAll('.emoji-btn').forEach(b => {
@@ -762,35 +856,16 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'f': fsBtn.click(); break;
       case 't': theaterBtn.click(); break;
       case 'c': camBtn.click(); break;
-      case 'l': layoutToggleBtn?.click(); break;
+      case 'g': setViewMode(currentViewMode === 'grid' ? 'stage' : 'grid'); break;
       case 'escape': roomModal.classList.remove('open'); break;
     }
   });
-
-  // ─── Layout Toggle (PIP vs Side-by-Side) ───
-  const layoutToggleBtn = $('layoutToggleBtn');
-  let isSideBySide = false;
-
-  if (layoutToggleBtn) {
-    layoutToggleBtn.addEventListener('click', () => {
-      isSideBySide = !isSideBySide;
-      const screenEl = $('screen');
-      screenEl.classList.toggle('side-by-side', isSideBySide);
-      layoutToggleBtn.classList.toggle('active', isSideBySide);
-      if (!isSideBySide) {
-        pip.style.top = '';
-        pip.style.left = '';
-        pip.style.right = '';
-      }
-      toast(isSideBySide ? 'Side-by-Side View active' : 'Picture-in-Picture mode active', 'info');
-    });
-  }
 
   // ─── Draggable PIP (mouse + touch) ───
   let dragX, dragY;
   function onDragStart(x, y) { dragX = x; dragY = y; }
   function onDragMove(x, y) {
-    if (isSideBySide) return;
+    if (currentViewMode !== 'pip') return;
     const dx = x - dragX, dy = y - dragY;
     dragX = x; dragY = y;
     const parent = pip.parentElement;

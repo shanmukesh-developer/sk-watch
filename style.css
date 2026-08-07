@@ -75,12 +75,79 @@ body.theater .sidebar{display:none}
 body.theater .main{grid-template-columns:1fr}
 body.theater .app{padding:4px;gap:4px}
 
-/* ── Screen ── */
-.screen{position:relative;background:#000;border-radius:var(--r2);overflow:hidden;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;min-height:0}
-.screen video{width:100%;height:100%;object-fit:contain;display:block}
+/* View switchers in header */
+.view-switchers{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.04);padding:3px;border-radius:var(--r);border:1px solid var(--border)}
+.view-switchers .btn-icon{width:28px;height:28px;border:none;background:transparent}
+.view-switchers .btn-icon.active{background:rgba(0,212,255,.18);color:var(--cyan)}
+
+/* ── Screen Stage Container ── */
+.screen{position:relative;background:#05070a;border-radius:var(--r2);overflow:hidden;border:1px solid var(--border);display:flex;flex-direction:column;min-height:0;width:100%;height:100%}
+
+/* Video Stage */
+.video-stage{width:100%;height:100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;padding:12px;padding-bottom:56px;align-items:center;justify-content:center;position:relative;z-index:1;overflow:hidden}
+
+/* Video Card (Zoom Tile) */
+.video-card{position:relative;width:100%;height:100%;min-height:180px;background:#0b0e17;border-radius:var(--r);border:1px solid var(--border2);overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(0,0,0,0.5);transition:all .3s cubic-bezier(0.16,1,0.3,1)}
+.video-card video{width:100%;height:100%;object-fit:cover;display:block;border-radius:var(--r)}
+.card-main-stream video{object-fit:contain;background:#000}
+
+/* Avatar Fallback (When Camera OFF) */
+.avatar-fallback{position:absolute;inset:0;background:radial-gradient(circle at center,#161b2b,#0a0d16);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;z-index:2;border-radius:var(--r)}
+.avatar-circle{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,var(--cyan),var(--purple));display:flex;align-items:center;justify-content:center;font-size:1.6rem;font-weight:800;color:#fff;box-shadow:0 0 25px rgba(0,212,255,0.35);letter-spacing:1px}
+.avatar-sub{font-size:.8rem;font-weight:600;color:var(--text2);letter-spacing:.5px}
+
+/* Card Overlay Info Bar */
+.card-overlay{position:absolute;bottom:8px;left:8px;right:8px;display:flex;align-items:center;justify-content:space-between;z-index:5;pointer-events:none}
+.participant-name{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--r-full);background:rgba(0,0,0,0.65);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.1);font-size:.75rem;font-weight:700;color:#fff}
+.host-tag{color:var(--cyan);font-weight:600;font-size:.68rem}
+.guest-tag{color:var(--purple);font-weight:600;font-size:.68rem}
+.stream-badge{background:rgba(0,212,255,0.2);color:var(--cyan);border:1px solid rgba(0,212,255,0.4);font-size:.65rem;font-weight:800;padding:2px 8px;border-radius:var(--r-full)}
+
+.card-status{display:flex;align-items:center;gap:4px}
+.mic-status{width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,0.65);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;color:var(--green);font-size:.7rem}
+.mic-status.off{color:var(--rose)}
+
+/* Speaking Halo Effect */
+.speaking-halo{position:absolute;inset:0;border-radius:var(--r);border:2.5px solid transparent;pointer-events:none;z-index:6;transition:all .15s ease}
+.video-card.speaking .speaking-halo{border-color:var(--cyan);box-shadow:inset 0 0 15px rgba(0,212,255,0.4),0 0 20px rgba(0,212,255,0.3)}
+
+/* ── View Modes ── */
+
+/* 1. Zoom Grid View (Default Gallery Grid) */
+.screen.zoom-grid-view .video-stage{
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+/* 2. Spotlight / Stage View (Main Stream Large, Participants in Strip) */
+.screen.zoom-stage-view .video-stage{
+  grid-template-columns: 1fr 240px;
+  grid-template-rows: 1fr;
+}
+.screen.zoom-stage-view .card-main-stream{
+  grid-column: 1 / 2;
+  height: 100%;
+}
+.screen.zoom-stage-view .video-stage > .card-participant{
+  grid-column: 2 / 3;
+  height: 180px;
+}
+
+/* 3. PIP View Mode */
+.screen.zoom-pip-view .video-stage{
+  display: block;
+  padding: 0;
+}
+.screen.zoom-pip-view .card-main-stream{
+  position: absolute;
+  inset: 0;
+  border-radius: 0;
+}
+.screen.zoom-pip-view .pip{
+  display: flex !important;
+}
 
 /* Welcome */
-.welcome{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;padding:24px;background:radial-gradient(ellipse,rgba(14,17,26,.95),var(--bg));z-index:2}
+.welcome{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;padding:24px;background:radial-gradient(ellipse,rgba(14,17,26,.95),var(--bg));z-index:10}
 .welcome-icon{font-size:3rem;animation:pulse 3s ease-in-out infinite}
 @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
 .welcome h2{font-size:1.4rem;font-weight:700}
@@ -96,55 +163,21 @@ body.theater .app{padding:4px;gap:4px}
 .btn-danger{background:linear-gradient(135deg,var(--rose),#b91c1c) !important}
 .w-full{width:100%}
 
-/* ── PIP Webcam ── */
-.pip{position:absolute;top:12px;right:12px;width:200px;z-index:8;border-radius:var(--r);overflow:hidden;background:var(--bg2);border:1px solid var(--border2);box-shadow:0 8px 24px rgba(0,0,0,.6);cursor:grab;transition:width .25s ease}
+/* ── PIP Floating Container ── */
+.pip{position:absolute;top:12px;right:12px;width:220px;z-index:20;border-radius:var(--r);overflow:hidden;background:var(--bg2);border:1px solid var(--border2);box-shadow:0 8px 24px rgba(0,0,0,.6);cursor:grab;transition:width .25s ease}
 .pip:active{cursor:grabbing}
-.pip.mini{width:120px}
-.pip-drag{display:flex;align-items:center;justify-content:space-between;padding:4px 8px;background:rgba(0,0,0,.5);font-size:.65rem;font-weight:600;color:var(--text3)}
-.pip-label{display:flex;align-items:center;gap:4px}
+.pip.mini{width:130px}
+.pip-drag{display:flex;align-items:center;justify-content:space-between;padding:4px 8px;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);font-size:.65rem;font-weight:600;color:var(--text3)}
+.pip-label{display:flex;align-items:center;gap:4px;color:#fff}
 .pip-toggle{width:20px;height:20px;border-radius:3px;background:rgba(255,255,255,.1);border:none;color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center}
 .pip-toggle:hover{color:var(--cyan)}
 .pip-video{position:relative;aspect-ratio:16/9;background:#080a10;overflow:hidden}
 .pip-video video{width:100%;height:100%;object-fit:cover;display:block}
-.pip-self{position:absolute;bottom:6px;right:6px;width:60px;aspect-ratio:16/9;border-radius:4px;border:1.5px solid rgba(255,255,255,.3);object-fit:cover;z-index:4;box-shadow:0 2px 8px rgba(0,0,0,.6);transition:all .2s ease;display:none}
+.pip-self{position:absolute;bottom:6px;right:6px;width:65px;aspect-ratio:16/9;border-radius:4px;border:1.5px solid rgba(255,255,255,.4);object-fit:cover;z-index:4;box-shadow:0 2px 8px rgba(0,0,0,.6);transition:all .2s ease;display:none}
 .pip-self.full-pip{position:absolute;inset:0;width:100%;height:100%;border-radius:0;border:none;z-index:2}
 .pip-off{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#080a10;color:var(--text3);z-index:1}
 .pip-ring{position:absolute;inset:-2px;border-radius:var(--r);border:2px solid transparent;pointer-events:none;z-index:5;transition:border-color .12s ease}
 .pip-ring.speaking{border-color:var(--cyan);box-shadow:inset 0 0 10px rgba(0,212,255,.3)}
-
-/* ── Side-by-Side Layout Mode ── */
-.screen.side-by-side {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px;
-  gap: 10px;
-}
-.screen.side-by-side #screenVideo,
-.screen.side-by-side #localVideo {
-  flex: 1 1 70%;
-  max-width: 75%;
-  height: 100%;
-  object-fit: contain;
-}
-.screen.side-by-side .pip {
-  position: relative !important;
-  top: auto !important;
-  right: auto !important;
-  left: auto !important;
-  flex: 1 1 30%;
-  max-width: 340px;
-  height: calc(100% - 10px);
-  display: flex;
-  flex-direction: column;
-  box-shadow: none;
-  cursor: default;
-}
-.screen.side-by-side .pip-video {
-  flex: 1;
-  aspect-ratio: auto;
-}
 
 /* ── Controls Dock ── */
 .controls{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:6px 14px;border-radius:var(--r-full);background:var(--glass);backdrop-filter:blur(14px);border:1px solid var(--border);z-index:12;width:min(96%,800px);transition:opacity .3s ease}

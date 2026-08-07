@@ -102,6 +102,10 @@ export class RTC {
     const answerStream = type === 'cam' ? this.rawCamStream : this.screenStream;
 
     call.answer(answerStream || undefined);
+    if (type === 'screen') this.screenCall = call;
+    if (type === 'cam') this.camCall = call;
+
+    this._optimizeCall(call);
 
     call.on('stream', remoteStream => {
       if (remoteStream && remoteStream.getTracks().length > 0) {
@@ -115,8 +119,10 @@ export class RTC {
 
     call.on('close', () => {
       if (type === 'cam') {
+        this.camCall = null;
         this.cb.onCam(null);
       } else {
+        this.screenCall = null;
         this.cb.onScreen(null);
       }
     });
@@ -127,8 +133,12 @@ export class RTC {
   }
 
   _call(targetId, stream, type) {
-    if (!this.peer || !stream) return;
+    if (!this.peer || !stream) return null;
     const call = this.peer.call(targetId, stream, { metadata: { type } });
+    if (type === 'screen') this.screenCall = call;
+    if (type === 'cam') this.camCall = call;
+
+    this._optimizeCall(call);
 
     call.on('stream', remoteStream => {
       if (remoteStream && remoteStream.getTracks().length > 0) {
@@ -143,6 +153,32 @@ export class RTC {
     call.on('error', err => {
       console.error('[Media Call Error]', err);
     });
+
+    return call;
+  }
+
+  _optimizeCall(call) {
+    if (!call) return;
+    const update = () => {
+      if (!call.peerConnection) return;
+      try {
+        call.peerConnection.getSenders().forEach(sender => {
+          if (sender.track && sender.track.kind === 'video') {
+            const params = sender.getParameters() || {};
+            if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+            params.encodings[0].maxBitrate = 5000000; // 5 Mbps for HD 1080p 60fps
+            params.encodings[0].maxFramerate = 60;
+            sender.setParameters(params).catch(() => {});
+          } else if (sender.track && sender.track.kind === 'audio') {
+            const params = sender.getParameters() || {};
+            if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+            params.encodings[0].maxBitrate = 510000; // 510 kbps Studio Stereo
+            sender.setParameters(params).catch(() => {});
+          }
+        });
+      } catch (e) {}
+    };
+    setTimeout(update, 500);
   }
 
   async shareScreen() {
@@ -150,11 +186,13 @@ export class RTC {
       this.stopScreen();
     }
     const s = await navigator.mediaDevices.getDisplayMedia({
-      video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } },
+      video: { width: { ideal: 3840, min: 1920 }, height: { ideal: 2160, min: 1080 }, frameRate: { ideal: 60, min: 30 } },
       audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 2,
+        sampleRate: 48000,
         suppressLocalAudioPlayback: false
       }
     });
@@ -162,17 +200,44 @@ export class RTC {
     s.getVideoTracks()[0].onended = () => this.stopScreen();
 
     if (this.conn?.open) {
-      this._call(this.conn.peer, s, 'screen');
+      this.rebindCustomStream(s);
     }
     return s;
   }
 
   shareCustomStream(s) {
-    if (this.screenStream) {
-      this.stopScreen();
-    }
+    return this.rebindCustomStream(s);
+  }
+
+  rebindCustomStream(s) {
     this.screenStream = s;
-    if (this.conn?.open) {
+    if (!this.conn?.open) return s;
+
+    // Check if active call exists and attempt seamless replaceTrack
+    let replaced = false;
+    if (this.screenCall && this.screenCall.peerConnection) {
+      try {
+        const senders = this.screenCall.peerConnection.getSenders();
+        const vTrack = s.getVideoTracks()[0];
+        const aTrack = s.getAudioTracks()[0];
+        senders.forEach(sender => {
+          if (sender.track?.kind === 'video' && vTrack) {
+            sender.replaceTrack(vTrack);
+            replaced = true;
+          } else if (sender.track?.kind === 'audio' && aTrack) {
+            sender.replaceTrack(aTrack);
+            replaced = true;
+          }
+        });
+      } catch (e) {
+        replaced = false;
+      }
+    }
+
+    if (!replaced) {
+      if (this.screenCall) {
+        try { this.screenCall.close(); } catch (e) {}
+      }
       this._call(this.conn.peer, s, 'screen');
     }
     return s;
@@ -183,13 +248,17 @@ export class RTC {
       this.screenStream.getTracks().forEach(t => t.stop());
       this.screenStream = null;
     }
+    if (this.screenCall) {
+      try { this.screenCall.close(); } catch (e) {}
+      this.screenCall = null;
+    }
     this.cb.onScreen(null);
   }
 
   async startCam() {
     const raw = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      video: { width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 60, min: 30 }, facingMode: 'user' },
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: { ideal: 2 }, sampleRate: { ideal: 48000 } }
     });
     this.rawCamStream = raw;
 
@@ -213,6 +282,10 @@ export class RTC {
     if (this.camStream) {
       this.camStream.getTracks().forEach(t => t.stop());
       this.camStream = null;
+    }
+    if (this.camCall) {
+      try { this.camCall.close(); } catch (e) {}
+      this.camCall = null;
     }
     this.dsp.cleanup();
     this.cb.onCam(null);

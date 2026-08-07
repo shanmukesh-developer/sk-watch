@@ -66,7 +66,11 @@
       </div>
 
       <div class="header-right">
-        <button class="btn-icon" id="layoutToggleBtn" title="Toggle Side-by-Side / PIP Layout"><i data-lucide="layout-grid" style="width:16px;height:16px"></i></button>
+        <div class="view-switchers" id="viewSwitchers">
+          <button class="btn-icon active" id="viewGridBtn" title="Zoom Grid View (G)"><i data-lucide="grid" style="width:16px;height:16px"></i></button>
+          <button class="btn-icon" id="viewStageBtn" title="Spotlight Stage View"><i data-lucide="layout-template" style="width:16px;height:16px"></i></button>
+          <button class="btn-icon" id="viewPipBtn" title="Picture-in-Picture Mode"><i data-lucide="square" style="width:16px;height:16px"></i></button>
+        </div>
         <button class="btn-ghost" id="openRoomBtn"><i data-lucide="link" style="width:16px;height:16px"></i> <span class="hide-mobile">Room</span></button>
         <button class="btn-icon" id="theaterBtn" title="Theater mode"><i data-lucide="maximize-2" style="width:16px;height:16px"></i></button>
       </div>
@@ -75,13 +79,57 @@
     <!-- Main Area -->
     <div class="main">
 
-      <!-- Video Screen -->
-      <div class="screen" id="screen">
+      <!-- Zoom Meeting Video Screen Stage -->
+      <div class="screen zoom-grid-view" id="screen">
 
-        <video id="screenVideo" autoplay playsinline></video>
-        <video id="localVideo" playsinline style="display:none"></video>
+        <!-- Main Video Stage (Zoom Grid / Spotlight) -->
+        <div class="video-stage" id="videoStage">
 
-        <!-- Welcome state -->
+          <!-- Shared Screen / Local Movie Stream Tile -->
+          <div class="video-card card-main-stream" id="cardMainStream" style="display:none">
+            <video id="screenVideo" autoplay playsinline></video>
+            <video id="localVideo" playsinline style="display:none"></video>
+            <div class="card-overlay">
+              <span class="participant-name" id="mainStreamLabel"><i data-lucide="monitor" style="width:13px;height:13px"></i> HD Theater Stream</span>
+              <span class="stream-badge">1080p 60FPS</span>
+            </div>
+          </div>
+
+          <!-- Local User Card (Host) -->
+          <div class="video-card card-participant" id="cardLocal">
+            <video id="localCam" autoplay playsinline muted></video>
+            <div class="avatar-fallback" id="localAvatar">
+              <div class="avatar-circle">SK</div>
+              <span class="avatar-sub">Shanmukh</span>
+            </div>
+            <div class="card-overlay">
+              <span class="participant-name">Shanmukh <span class="host-tag">(You)</span></span>
+              <div class="card-status">
+                <span class="mic-status" id="localMicBadge"><i data-lucide="mic" style="width:13px;height:13px"></i></span>
+              </div>
+            </div>
+            <div class="speaking-halo" id="localHalo"></div>
+          </div>
+
+          <!-- Remote Partner Card (Guest) -->
+          <div class="video-card card-participant" id="cardRemote">
+            <video id="remoteCam" autoplay playsinline></video>
+            <div class="avatar-fallback" id="remoteAvatar">
+              <div class="avatar-circle">K</div>
+              <span class="avatar-sub">Kavya</span>
+            </div>
+            <div class="card-overlay">
+              <span class="participant-name">Kavya <span class="guest-tag">(Partner)</span></span>
+              <div class="card-status">
+                <span class="mic-status" id="remoteMicBadge"><i data-lucide="mic" style="width:13px;height:13px"></i></span>
+              </div>
+            </div>
+            <div class="speaking-halo" id="remoteHalo"></div>
+          </div>
+
+        </div>
+
+        <!-- Welcome state overlay -->
         <div class="welcome" id="welcome">
           <div class="welcome-icon">🎬</div>
           <h2>Ready for Movie Night</h2>
@@ -91,18 +139,18 @@
             <label class="btn-outline" for="fileIn"><i data-lucide="file-video" style="width:18px;height:18px"></i> Load File</label>
             <input type="file" id="fileIn" accept="video/*" hidden>
           </div>
-          <div class="tip">💡 Select <b>"Also share tab audio"</b> when prompted for best audio quality</div>
+          <div class="tip">💡 Select <b>"Also share tab audio"</b> when prompted for studio audio quality</div>
         </div>
 
-        <!-- PIP webcam -->
-        <div class="pip" id="pip">
+        <!-- PIP Floating Container (used only in PIP Mode) -->
+        <div class="pip" id="pip" style="display:none">
           <div class="pip-drag" id="pipDrag">
             <span class="pip-label" id="pipLabel">Webcam</span>
             <button class="pip-toggle" id="pipToggle"><i data-lucide="minus" style="width:12px;height:12px"></i></button>
           </div>
           <div class="pip-video" id="pipVideoWrap">
-            <video id="remoteCam" autoplay playsinline></video>
-            <video id="localCam" autoplay playsinline muted class="pip-self"></video>
+            <video id="pipRemoteCam" autoplay playsinline></video>
+            <video id="pipLocalCam" autoplay playsinline muted class="pip-self"></video>
             <div class="pip-off" id="pipOff"><i data-lucide="video-off" style="width:20px;height:20px"></i></div>
             <div class="pip-ring" id="pipRing"></div>
           </div>
@@ -111,7 +159,7 @@
         <!-- Emoji overlay -->
         <div class="emoji-layer" id="emojiLayer"></div>
 
-        <!-- Controls bar -->
+        <!-- Zoom Controls Dock -->
         <div class="controls" id="controls">
           <button class="ctrl-btn" id="playPauseBtn" title="Play/Pause"><i data-lucide="play" style="width:18px;height:18px"></i></button>
           <span class="ctrl-time" id="timeLabel">--:-- / --:--</span>
