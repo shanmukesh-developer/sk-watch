@@ -820,22 +820,44 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function parseSRT(data) {
-    const pattern = /(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]*?)(?=\n\n|\n*$)/g;
+    if (!data) return [];
+    const cleanData = data.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const blocks = cleanData.split(/\n\s*\n/);
     const result = [];
-    let match;
     const timeToSec = t => {
-      const [h, m, sMs] = t.split(':');
-      const [s, ms] = sMs.split(',');
-      return (+h)*3600 + (+m)*60 + (+s) + (+ms)/1000;
+      if (!t) return 0;
+      const parts = t.trim().replace('.', ',').split(':');
+      if (parts.length === 3) {
+        const [h, m, sMs] = parts;
+        const [s, ms] = (sMs || '0,0').split(',');
+        return (+h) * 3600 + (+m) * 60 + (+s) + (+ms || 0) / 1000;
+      } else if (parts.length === 2) {
+        const [m, sMs] = parts;
+        const [s, ms] = (sMs || '0,0').split(',');
+        return (+m) * 60 + (+s) + (+ms || 0) / 1000;
+      }
+      return 0;
     };
-    while ((match = pattern.exec(data.replace(/\r\n/g, '\n'))) !== null) {
-      result.push({ start: timeToSec(match[2]), end: timeToSec(match[3]), text: match[4].trim() });
-    }
+
+    blocks.forEach(block => {
+      const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+      const timeLineIdx = lines.findIndex(l => l.includes('-->'));
+      if (timeLineIdx !== -1) {
+        const timeLine = lines[timeLineIdx];
+        const [startStr, endStr] = timeLine.split('-->');
+        if (startStr && endStr) {
+          const text = lines.slice(timeLineIdx + 1).join('<br>').replace(/<(?!\/?(i|b|br)\b)[^>]+>/gi, '');
+          if (text) {
+            result.push({ start: timeToSec(startStr), end: timeToSec(endStr), text });
+          }
+        }
+      }
+    });
     return result;
   }
 
   function parseVTT(data) {
-    return parseSRT(data.replace(/WEBVTT/g, '').replace(/\./g, ','));
+    return parseSRT(data.replace(/WEBVTT/g, ''));
   }
 
   function updateSubtitles(currentTime) {
@@ -846,7 +868,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const currentSub = subtitles.find(s => currentTime >= s.start && currentTime <= s.end);
     if (currentSub) {
-      subtitleContainer.textContent = currentSub.text;
+      subtitleContainer.innerHTML = currentSub.text;
       subtitleContainer.style.display = 'block';
     } else {
       subtitleContainer.style.display = 'none';
@@ -1103,7 +1125,8 @@ document.addEventListener('DOMContentLoaded', () => {
           sfx.play(d.payload.fx);
           const fxLabels = {
             popcorn: '🍿 Popcorn', applause: '👏 Applause', drumroll: '🥁 Drumroll', fanfare: '🎺 Fanfare', cheer: '🎉 Cheer',
-            braam: '🎺 Inception BRAAM', dunkirkClock: '⏱️ Dunkirk Tick', cosmicDrone: '🌌 Cosmic Drone', trailerImpact: '💥 Trailer Boom'
+            braam: '🎺 Inception BRAAM', dunkirkClock: '⏱️ Dunkirk Tick', cosmicDrone: '🌌 Cosmic Drone', trailerImpact: '💥 Trailer Boom',
+            sciFiLaser: '🔫 Laser Pew', horrorSting: '😱 Horror Sting'
           };
           toast(`Partner played ${fxLabels[d.payload.fx] || d.payload.fx}!`, 'info');
         }

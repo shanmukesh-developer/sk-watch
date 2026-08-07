@@ -27,6 +27,8 @@ export class SoundFXEngine {
       case 'dunkirkClock': this.dunkirkClock(); break;
       case 'cosmicDrone': this.cosmicDrone(); break;
       case 'trailerImpact': this.trailerImpact(); break;
+      case 'sciFiLaser': this.sciFiLaser(); break;
+      case 'horrorSting': this.horrorSting(); break;
     }
   }
 
@@ -310,5 +312,46 @@ export class SoundFXEngine {
     g.connect(c.destination);
     o.start();
     o.stop(c.currentTime + duration);
+  }
+
+  sciFiLaser() {
+    const c = this._getCtx();
+    const now = c.currentTime;
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(1600, now);
+    osc.frequency.exponentialRampToValueAtTime(120, now + 0.25);
+
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+    osc.connect(gain);
+    gain.connect(c.destination);
+    osc.start(now);
+    osc.stop(now + 0.25);
+  }
+
+  horrorSting() {
+    const c = this._getCtx();
+    const now = c.currentTime;
+    const duration = 1.2;
+
+    [110, 116.54, 155.56, 233.08].forEach(freq => {
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.linearRampToValueAtTime(freq * 1.08, now + duration);
+
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.2, now + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+      osc.connect(gain);
+      gain.connect(c.destination);
+      osc.start(now);
+      osc.stop(now + duration);
+    });
   }
 }
