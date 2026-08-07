@@ -1,3 +1,4 @@
+import Peer from 'peerjs';
 import { AudioDSP } from './audio-processor.js';
 
 export class RTC {
@@ -35,7 +36,7 @@ export class RTC {
         { urls: 'stun:global.stun.twilio.com:3478' }
       ];
 
-      // Self-hosted PeerServer options
+      // Self-hosted PeerServer options (/peerjs path)
       const selfHostedOpts = {
         host: host,
         path: '/peerjs',
@@ -47,22 +48,34 @@ export class RTC {
         selfHostedOpts.port = parseInt(portStr, 10);
       }
 
+      // Self-hosted PeerServer options (root path fallback)
+      const selfHostedRootOpts = {
+        host: host,
+        path: '/',
+        secure: isHttps,
+        debug: 0,
+        config: { iceServers }
+      };
+      if (portStr && portStr !== '80' && portStr !== '443') {
+        selfHostedRootOpts.port = parseInt(portStr, 10);
+      }
+
       // Public PeerJS Cloud options
       const cloudOpts = {
+        host: '0.peerjs.com',
+        port: 443,
+        path: '/',
+        secure: true,
         debug: 0,
         config: { iceServers }
       };
 
-      // 4-stage fallback configs:
-      // Stage 1: Self-hosted + customId
-      // Stage 2: Self-hosted + autoId
-      // Stage 3: Cloud + customId
-      // Stage 4: Cloud + autoId
       const attempts = [
-        { opts: selfHostedOpts, id: customId, name: 'Self-hosted (Custom ID)' },
-        { opts: selfHostedOpts, id: null, name: 'Self-hosted (Auto ID)' },
-        { opts: cloudOpts, id: customId, name: 'Cloud (Custom ID)' },
-        { opts: cloudOpts, id: null, name: 'Cloud (Auto ID)' }
+        { opts: selfHostedOpts, id: customId, name: 'Self-Hosted /peerjs (Custom ID)' },
+        { opts: selfHostedOpts, id: null, name: 'Self-Hosted /peerjs (Auto ID)' },
+        { opts: selfHostedRootOpts, id: customId, name: 'Self-Hosted Root (Custom ID)' },
+        { opts: cloudOpts, id: customId, name: 'PeerJS Cloud (Custom ID)' },
+        { opts: cloudOpts, id: null, name: 'PeerJS Cloud (Auto ID)' }
       ];
 
       let currentAttemptIndex = 0;
@@ -82,7 +95,7 @@ export class RTC {
             try { this.peer.destroy(); } catch (e) {}
           }
 
-          this.peer = config.id ? new window.Peer(config.id, config.opts) : new window.Peer(config.opts);
+          this.peer = config.id ? new Peer(config.id, config.opts) : new Peer(config.opts);
 
           let resolved = false;
 
@@ -90,7 +103,7 @@ export class RTC {
             if (resolved) return;
             resolved = true;
             this.id = id;
-            console.log(`[RTC Signaling] Successfully connected to signaling server! Room ID: ${id}`);
+            console.log(`[RTC Signaling] Connected via ${config.name}! Room ID: ${id}`);
             this.cb.onStatus('ready', id);
             resolve(id);
           });
@@ -99,14 +112,13 @@ export class RTC {
           this.peer.on('call', c => this._handleCall(c));
 
           this.peer.on('error', e => {
-            console.warn(`[RTC Signaling Warning] Attempt ${config.name} failed:`, e);
+            console.warn(`[RTC Signaling Warning] ${config.name} error:`, e.type, e.message);
             if (e.type === 'peer-unavailable') {
-              // Peer unavailable means target room ID was not found during connect()
               this.cb.onStatus('error', 'Room ID not found');
               return;
             }
             if (!resolved) {
-              setTimeout(tryNextAttempt, 300);
+              setTimeout(tryNextAttempt, 200);
             }
           });
 
@@ -117,8 +129,8 @@ export class RTC {
             }
           });
         } catch (err) {
-          console.warn(`[RTC Signaling Exception] Attempt ${config.name} exception:`, err);
-          setTimeout(tryNextAttempt, 300);
+          console.warn(`[RTC Signaling Exception] ${config.name} exception:`, err);
+          setTimeout(tryNextAttempt, 200);
         }
       };
 
