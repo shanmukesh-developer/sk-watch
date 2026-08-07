@@ -676,12 +676,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const v = e.target.value / 100;
     screenVideo.volume = v;
     localVideo.volume = v;
+    remoteCam.volume = v;
   });
 
   volBtn.addEventListener('click', () => {
     const m = !screenVideo.muted;
     screenVideo.muted = m;
     localVideo.muted = m;
+    remoteCam.muted = m;
     volBtn.innerHTML = m ? `<i data-lucide="volume-x" style="width:16px;height:16px"></i>` : `<i data-lucide="volume-2" style="width:16px;height:16px"></i>`;
     if (window.lucide) lucide.createIcons();
   });
