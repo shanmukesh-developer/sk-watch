@@ -25,6 +25,9 @@ export class RTC {
     this._customId = null;
     this._destroyed = false;
 
+    // Multi-peer mesh connections
+    this.conns = new Map();
+
     // Connection stats
     this._statsInterval = null;
     this._latestStats = { rtt: 0, bitrate: 0, packetLoss: 0, resolution: '', fps: 0 };
@@ -167,7 +170,9 @@ export class RTC {
   connect(targetId) {
     if (!targetId) return;
     this._targetPeerId = targetId;
-    this._reconnectAttempts = 0;
+    if (!this._isReconnecting) {
+      this._reconnectAttempts = 0;
+    }
 
     if (!this.peer) {
       console.warn('[RTC Connect] Peer instance not initialized');
@@ -294,6 +299,7 @@ export class RTC {
 
     c.on('open', () => {
       clearTimeout(connTimeout);
+      this.conns.set(c.peer, c);
       this._targetPeerId = c.peer;
       this._reconnectAttempts = 0;
       this._isReconnecting = false;
@@ -317,8 +323,8 @@ export class RTC {
       if (d && d.type === '__HEARTBEAT__') {
         this._onHeartbeatReceived();
         // Echo heartbeat response
-        if (this.conn?.open) {
-          try { this.conn.send({ type: '__HEARTBEAT_ACK__', payload: { ts: Date.now() }, ts: Date.now() }); } catch (e) {}
+        if (c && c.open) {
+          try { c.send({ type: '__HEARTBEAT_ACK__', payload: { ts: Date.now() }, ts: Date.now() }); } catch (e) {}
         }
         return;
       }
@@ -335,6 +341,7 @@ export class RTC {
 
     c.on('close', () => {
       clearTimeout(connTimeout);
+      this.conns.delete(c.peer);
       this._stopHeartbeat();
       this._stopStatsMonitor();
       this.cb.onDisconnect();
@@ -353,10 +360,16 @@ export class RTC {
   }
 
   _handleCall(call) {
+    if (!call) return;
     const type = call.metadata?.type || 'screen';
     const answerStream = type === 'cam' ? (this.camStream || this.rawCamStream) : this.screenStream;
 
-    call.answer(answerStream || undefined);
+    try {
+      call.answer(answerStream || undefined);
+    } catch (e) {
+      console.error('[RTC Answer Error]', e);
+      return;
+    }
     if (type === 'screen') this.screenCall = call;
     if (type === 'cam') this.camCall = call;
 
@@ -370,6 +383,14 @@ export class RTC {
         } else {
           this.cb.onScreen(remoteStream);
         }
+        remoteStream.getTracks().forEach(track => {
+          track.addEventListener('ended', () => {
+            if (remoteStream.getTracks().every(t => t.readyState === 'ended')) {
+              if (type === 'cam') this.cb.onCam(null);
+              else this.cb.onScreen(null);
+            }
+          });
+        });
       }
     });
 
@@ -390,7 +411,15 @@ export class RTC {
 
   _call(targetId, stream, type) {
     if (!this.peer || !stream) return null;
-    const call = this.peer.call(targetId, stream, { metadata: { type } });
+    let call = null;
+    try {
+      call = this.peer.call(targetId, stream, { metadata: { type } });
+    } catch (e) {
+      console.error('[RTC Call Error]', e);
+      return null;
+    }
+    if (!call) return null;
+
     if (type === 'screen') this.screenCall = call;
     if (type === 'cam') this.camCall = call;
 
@@ -404,6 +433,14 @@ export class RTC {
         } else {
           this.cb.onScreen(remoteStream);
         }
+        remoteStream.getTracks().forEach(track => {
+          track.addEventListener('ended', () => {
+            if (remoteStream.getTracks().every(t => t.readyState === 'ended')) {
+              if (type === 'cam') this.cb.onCam(null);
+              else this.cb.onScreen(null);
+            }
+          });
+        });
       }
     });
 
@@ -605,7 +642,13 @@ export class RTC {
 
   rebindCustomStream(s) {
     this.screenStream = s;
-    if (!this.conn?.open) return s;
+    const openPeers = new Set();
+    if (this.conn?.open) openPeers.add(this.conn.peer);
+    this.conns.forEach(c => {
+      if (c && c.open) openPeers.add(c.peer);
+    });
+
+    if (openPeers.size === 0) return s;
 
     // Check if active call exists and attempt seamless replaceTrack if senders match
     let replaced = false;
@@ -640,7 +683,9 @@ export class RTC {
       if (this.screenCall) {
         try { this.screenCall.close(); } catch (e) {}
       }
-      this._call(this.conn.peer, s, 'screen');
+      openPeers.forEach(peerId => {
+        this._call(peerId, s, 'screen');
+      });
     }
     return s;
   }
@@ -670,9 +715,15 @@ export class RTC {
       this.camStream = raw;
     }
 
-    if (this.conn?.open) {
-      this._call(this.conn.peer, this.camStream || raw, 'cam');
-    }
+    const openPeers = new Set();
+    if (this.conn?.open) openPeers.add(this.conn.peer);
+    this.conns.forEach(c => {
+      if (c && c.open) openPeers.add(c.peer);
+    });
+
+    openPeers.forEach(peerId => {
+      this._call(peerId, this.camStream || raw, 'cam');
+    });
     return this.camStream || raw;
   }
 
@@ -689,9 +740,15 @@ export class RTC {
       this.camStream = raw;
     }
 
-    if (this.conn?.open) {
-      this._call(this.conn.peer, this.camStream || raw, 'cam');
-    }
+    const openPeers = new Set();
+    if (this.conn?.open) openPeers.add(this.conn.peer);
+    this.conns.forEach(c => {
+      if (c && c.open) openPeers.add(c.peer);
+    });
+
+    openPeers.forEach(peerId => {
+      this._call(peerId, this.camStream || raw, 'cam');
+    });
     return this.camStream || raw;
   }
 
@@ -713,7 +770,15 @@ export class RTC {
   }
 
   send(type, payload) {
-    if (this.conn?.open) this.conn.send({ type, payload, ts: Date.now() });
+    const packet = { type, payload, ts: Date.now() };
+    if (this.conn?.open) {
+      try { this.conn.send(packet); } catch (e) {}
+    }
+    this.conns.forEach(c => {
+      if (c && c.open && c !== this.conn) {
+        try { c.send(packet); } catch (e) {}
+      }
+    });
   }
 
   destroy() {

@@ -29,10 +29,152 @@ export class SoundFXEngine {
       case 'trailerImpact': this.trailerImpact(); break;
       case 'sciFiLaser': this.sciFiLaser(); break;
       case 'horrorSting': this.horrorSting(); break;
+      case 'vinylCrackle': this.vinylCrackle(); break;
+      case 'cyberSynthRise': this.cyberSynthRise(); break;
+      case 'thunderBoom': this.thunderBoom(); break;
+      case 'retroChime': this.retroChime(); break;
+      case 'cameraShutter': this.cameraShutter(); break;
+    }
+  }
+
+  cameraShutter() {
+    const c = this._getCtx();
+    const now = c.currentTime;
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(2400, now);
+    osc.frequency.exponentialRampToValueAtTime(100, now + 0.08);
+    g.gain.setValueAtTime(0.3, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    osc.connect(g);
+    g.connect(c.destination);
+    osc.start(now);
+    osc.stop(now + 0.09);
+  }
+
+  toggleAmbient(type) {
+    if (!this.ambientActive) this.ambientActive = {};
+    if (this.ambientActive[type]) {
+      try { this.ambientActive[type].stop(); } catch (e) {}
+      this.ambientActive[type] = null;
+      return false;
+    } else {
+      const c = this._getCtx();
+      const dur = 10;
+      const bufSize = c.sampleRate * dur;
+      const buf = c.createBuffer(1, bufSize, c.sampleRate);
+      const data = buf.getChannelData(0);
+
+      if (type === 'rain') {
+        for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.1;
+      } else if (type === 'fireplace') {
+        for (let i = 0; i < bufSize; i++) {
+          data[i] = Math.random() < 0.005 ? (Math.random() * 2 - 1) * 0.6 : (Math.random() * 0.04 - 0.02);
+        }
+      } else if (type === 'wind') {
+        let last = 0;
+        for (let i = 0; i < bufSize; i++) {
+          const white = Math.random() * 2 - 1;
+          data[i] = (last + (0.02 * white)) / 1.02;
+          last = data[i];
+        }
+      }
+
+      const src = c.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const g = c.createGain();
+      g.gain.value = type === 'rain' ? 0.15 : (type === 'fireplace' ? 0.2 : 0.25);
+
+      const filter = c.createBiquadFilter();
+      filter.type = type === 'rain' ? 'lowpass' : (type === 'fireplace' ? 'bandpass' : 'lowpass');
+      filter.frequency.value = type === 'rain' ? 3000 : (type === 'fireplace' ? 1200 : 400);
+
+      src.connect(filter);
+      filter.connect(g);
+      g.connect(c.destination);
+      src.start();
+      this.ambientActive[type] = src;
+      return true;
     }
   }
 
   // ─── Nolan Soundscapes & Synthesizers ───
+
+  vinylCrackle() {
+    const c = this._getCtx();
+    const now = c.currentTime;
+    const dur = 2.0;
+    const bufSize = c.sampleRate * dur;
+    const buf = c.createBuffer(1, bufSize, c.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) {
+      data[i] = Math.random() < 0.003 ? (Math.random() * 2 - 1) * 0.8 : (Math.random() * 0.05 - 0.025);
+    }
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.2, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    src.connect(g);
+    g.connect(c.destination);
+    src.start(now);
+  }
+
+  cyberSynthRise() {
+    const c = this._getCtx();
+    const now = c.currentTime;
+    const dur = 1.5;
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.exponentialRampToValueAtTime(1800, now + dur);
+    g.gain.setValueAtTime(0.01, now);
+    g.gain.linearRampToValueAtTime(0.2, now + 0.3);
+    g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    osc.connect(g);
+    g.connect(c.destination);
+    osc.start(now);
+    osc.stop(now + dur);
+  }
+
+  thunderBoom() {
+    const c = this._getCtx();
+    const now = c.currentTime;
+    const dur = 2.5;
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(100, now);
+    osc.frequency.exponentialRampToValueAtTime(20, now + dur);
+    g.gain.setValueAtTime(0.5, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    osc.connect(g);
+    g.connect(c.destination);
+    osc.start(now);
+    osc.stop(now + dur);
+  }
+
+  retroChime() {
+    const c = this._getCtx();
+    const now = c.currentTime;
+    const freqs = [523.25, 659.25, 783.99, 1046.50];
+    freqs.forEach((f, i) => {
+      const st = now + i * 0.1;
+      const osc = c.createOscillator();
+      const g = c.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, st);
+      g.gain.setValueAtTime(0.15, st);
+      g.gain.exponentialRampToValueAtTime(0.001, st + 0.4);
+      osc.connect(g);
+      g.connect(c.destination);
+      osc.start(st);
+      osc.stop(st + 0.45);
+    });
+  }
 
   braam() {
     const c = this._getCtx();

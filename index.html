@@ -92,6 +92,8 @@
           <button class="btn-icon" id="viewStageBtn" title="Spotlight Stage View"><i data-lucide="layout-template" style="width:16px;height:16px"></i></button>
           <button class="btn-icon" id="viewPipBtn" title="Picture-in-Picture Mode"><i data-lucide="square" style="width:16px;height:16px"></i></button>
         </div>
+        <button class="btn-icon hide-mobile" id="dimLightsBtn" title="Dim Cinema Lights"><i data-lucide="moon" style="width:16px;height:16px"></i></button>
+        <button class="btn-icon hide-mobile" id="summaryBtn" title="Watch Party Session Summary"><i data-lucide="award" style="width:16px;height:16px"></i></button>
         <button class="btn-icon hide-mobile" id="diagnosticsBtn" title="Network & WebRTC Diagnostics"><i data-lucide="activity" style="width:16px;height:16px"></i></button>
         <button class="btn-ghost" id="openRoomBtn"><i data-lucide="link" style="width:16px;height:16px"></i> <span class="hide-mobile">Room</span></button>
         <button class="btn-icon" id="theaterBtn" title="Theater mode"><i data-lucide="maximize-2" style="width:16px;height:16px"></i></button>
@@ -133,10 +135,11 @@
         <!-- Main Video Stage (Zoom Grid / Spotlight) -->
         <div class="video-stage" id="videoStage">
 
-          <!-- Shared Screen / Local Movie Stream Tile -->
+          <!-- Shared Screen / Local Movie / YouTube Stream Tile -->
           <div class="video-card card-main-stream" id="cardMainStream" style="display:none">
             <video id="screenVideo" autoplay playsinline></video>
             <video id="localVideo" playsinline style="display:none"></video>
+            <div id="youtubePlayer" class="youtube-player" style="display:none"></div>
             
             <!-- Dynamic Subtitle Sync Display Overlay -->
             <div id="subtitleContainer" class="subtitle-overlay"></div>
@@ -193,10 +196,10 @@
             <input type="file" id="fileIn" accept="video/*" hidden>
           </div>
 
-          <!-- Video URL Streamer Bar -->
+          <!-- Video URL / YouTube / HLS Streamer Bar -->
           <div class="url-streamer-box">
-            <input type="text" id="videoUrlInput" placeholder="Paste Video URL (MP4 / WebM)...">
-            <button class="btn-primary btn-sm" id="streamUrlBtn"><i data-lucide="play-circle" style="width:14px;height:14px"></i> Play URL</button>
+            <input type="text" id="videoUrlInput" placeholder="Paste YouTube link or MP4/HLS URL...">
+            <button class="btn-primary btn-sm" id="streamUrlBtn"><i data-lucide="play-circle" style="width:14px;height:14px"></i> Play URL / YouTube</button>
           </div>
 
           <div class="tip">💡 Tip: Select <b>"Entire Screen"</b> to share any app/window when switching, or select <b>"Chrome Tab"</b> with <b>"Also share tab audio"</b> for movie streaming!</div>
@@ -282,6 +285,8 @@
           <button class="ctrl-btn" id="camBtn" title="Camera (C)"><i data-lucide="video" style="width:16px;height:16px"></i></button>
           <button class="ctrl-btn" id="micBtn" title="Mic (M)"><i data-lucide="mic" style="width:16px;height:16px"></i></button>
           <button class="ctrl-btn active" id="noiseBtn" title="Noise Filter"><i data-lucide="shield-check" style="width:16px;height:16px"></i></button>
+          <!-- Frame Snapshot Shutter Button -->
+          <button class="ctrl-btn hide-mobile" id="snapBtn" title="Take HD Movie Snapshot (S)"><i data-lucide="camera" style="width:16px;height:16px"></i></button>
           <!-- Native PIP Button -->
           <button class="ctrl-btn hide-mobile" id="nativePipBtn" title="Picture-in-Picture (P)"><i data-lucide="picture-in-picture" style="width:16px;height:16px"></i></button>
           <button class="ctrl-btn" id="fsBtn" title="Fullscreen (F)"><i data-lucide="maximize" style="width:16px;height:16px"></i></button>
@@ -312,6 +317,8 @@
             <span class="typing-text" id="typingText">Partner is typing...</span>
           </div>
           <form class="chat-form" id="chatForm">
+            <button type="button" class="btn-icon" id="pollBtn" title="Create Live Poll"><i data-lucide="bar-chart-2" style="width:16px;height:16px"></i></button>
+            <button type="button" class="btn-icon" id="voiceMemoBtn" title="Record Voice Memo"><i data-lucide="mic" style="width:16px;height:16px"></i></button>
             <input type="text" id="chatIn" placeholder="Message..." autocomplete="off">
             <button type="submit" class="btn-send"><i data-lucide="send" style="width:16px;height:16px"></i></button>
           </form>
@@ -322,12 +329,25 @@
           <div class="audio-cfg">
             <h4>🔊 Noise Filter & DSP</h4>
             <label class="cfg-row"><span>Noise Suppression</span><input type="checkbox" id="noiseCheck" checked></label>
+            <label class="cfg-row"><span>Night Mode Audio Leveler</span><input type="checkbox" id="nightCheck"></label>
             <label class="cfg-row"><span>Gate Sensitivity</span><span id="gateVal">-30 dB</span></label>
             <input type="range" id="gateSlider" min="-80" max="-10" value="-30">
             <label class="cfg-row"><span>Mic Gain</span><span id="gainVal">1.0x</span></label>
             <input type="range" id="gainSlider" min="0" max="30" value="10">
             <label class="cfg-row"><span>Audio Lip-Sync Delay</span><span id="delayVal">0 ms</span></label>
             <input type="range" id="delaySlider" min="0" max="500" value="0">
+            
+            <label class="cfg-row"><span>Subtitle Delay Offset</span><span id="subOffsetVal">0.0s</span></label>
+            <input type="range" id="subOffsetSlider" min="-5" max="5" step="0.5" value="0">
+
+            <label class="cfg-row" style="margin-top:8px"><span>Voice Modulator FX</span></label>
+            <select id="voiceFxSelect" class="ctrl-select w-full" style="margin-bottom:8px;width:100%">
+              <option value="normal">🎙️ Normal Voice</option>
+              <option value="deep">👹 Deep Cinematic</option>
+              <option value="robot">🤖 Cyber Robot</option>
+              <option value="telephone">📞 Vintage Phone</option>
+              <option value="radio">📻 Walkie Talkie</option>
+            </select>
             
             <!-- Live Audio Spectrum Visualizer -->
             <h4 style="margin-top:8px">📊 Real-Time Audio Spectrum</h4>
@@ -436,6 +456,30 @@
                 <span class="fx-emoji">😱</span>
                 <span class="fx-title">Horror Sting</span>
               </button>
+              <button class="fx-card" data-fx="vinylCrackle">
+                <span class="fx-emoji">📻</span>
+                <span class="fx-title">Vinyl Crackle</span>
+              </button>
+              <button class="fx-card" data-fx="cyberSynthRise">
+                <span class="fx-emoji">⚡</span>
+                <span class="fx-title">Synth Rise</span>
+              </button>
+              <button class="fx-card" data-fx="thunderBoom">
+                <span class="fx-emoji">🌩️</span>
+                <span class="fx-title">Thunder Boom</span>
+              </button>
+              <button class="fx-card" data-fx="retroChime">
+                <span class="fx-emoji">🔔</span>
+                <span class="fx-title">Retro Chime</span>
+              </button>
+            </div>
+
+            <h4 style="margin-top:14px">🌧️ Procedural Ambient Soundscapes</h4>
+            <p class="soundboard-sub">Cozy atmosphere generators</p>
+            <div class="ambient-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px">
+              <button class="btn-outline btn-sm ambient-btn" data-ambient="rain">🌧️ Rain</button>
+              <button class="btn-outline btn-sm ambient-btn" data-ambient="fireplace">🔥 Fireplace</button>
+              <button class="btn-outline btn-sm ambient-btn" data-ambient="wind">🌌 Cosmic Wind</button>
             </div>
           </div>
         </div>
@@ -537,6 +581,46 @@
         <div class="shortcut-item"><kbd>?</kbd><span>Show Shortcuts</span></div>
         <div class="shortcut-item"><kbd>Esc</kbd><span>Close Modal</span></div>
         <div class="shortcut-item"><kbd>[ / ]</kbd><span>Adjust Speed</span></div>
+        <div class="shortcut-item"><kbd>S</kbd><span>Take Frame Snapshot</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Live Poll Modal -->
+  <div class="modal-bg" id="pollModal">
+    <div class="modal">
+      <div class="modal-top">
+        <h3>📊 Launch Live Room Poll</h3>
+        <button class="btn-icon" id="closePollBtn"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <p class="modal-label">Poll Question</p>
+          <input type="text" id="pollQuestionInput" class="modal-input" placeholder="e.g. Rate this scene /10?">
+        </div>
+        <div class="modal-section">
+          <p class="modal-label">Options (comma-separated)</p>
+          <input type="text" id="pollOptionsInput" class="modal-input" placeholder="e.g. Masterpiece 🔥, Mid 😐, Trash 🗑️">
+        </div>
+        <button class="btn-primary w-full" id="submitPollBtn"><i data-lucide="bar-chart-2" style="width:16px;height:16px"></i> Broadcast Poll to Room</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Watch Party Session Summary Modal -->
+  <div class="modal-bg" id="summaryModal">
+    <div class="modal">
+      <div class="modal-top">
+        <h3>📜 Watch Party Session Recap</h3>
+        <button class="btn-icon" id="closeSummaryBtn"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="summary-stats-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="diag-item"><span>Party Duration</span><code id="sumDuration">00m 00s</code></div>
+          <div class="diag-item"><span>Movie Snapshots</span><code id="sumSnaps">0</code></div>
+          <div class="diag-item"><span>Voice Memos</span><code id="sumMemos">0</code></div>
+          <div class="diag-item"><span>Live Polls</span><code id="sumPolls">0</code></div>
+        </div>
       </div>
     </div>
   </div>
