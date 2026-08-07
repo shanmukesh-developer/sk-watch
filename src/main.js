@@ -4,6 +4,14 @@ import { SoundFXEngine } from './soundboard.js';
 document.addEventListener('DOMContentLoaded', () => {
   if (window.lucide) lucide.createIcons();
 
+  // ─── Application State ───
+  let roomId = null;
+  let camOn = false;
+  let micOn = true;
+  let syncMode = false;
+  let sharing = false;
+  let pipMini = false;
+
   const sfx = new SoundFXEngine();
 
   // ─── Authentic Marvel Studios Stencil Letter-Mask Engine ───
