@@ -720,8 +720,22 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ─── Mic ───
-  micBtn.addEventListener('click', () => {
-    if (!rtc.rawCamStream) return toast('Turn on camera first', 'warn');
+  micBtn.addEventListener('click', async () => {
+    if (!rtc.rawCamStream) {
+      try {
+        await rtc.startMicOnly();
+        micOn = true;
+        micBtn.classList.add('active');
+        micBtn.classList.remove('off');
+        micBtn.innerHTML = `<i data-lucide="mic" style="width:16px;height:16px"></i>`;
+        if (window.lucide) lucide.createIcons();
+        updateParticipantCards();
+        toast('Microphone unmuted', 'ok');
+      } catch (e) {
+        toast('Microphone access denied', 'err');
+      }
+      return;
+    }
     const tracks = rtc.rawCamStream.getAudioTracks();
     if (!tracks || tracks.length === 0) return toast('No microphone track found', 'warn');
     const enabled = !tracks[0].enabled;

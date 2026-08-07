@@ -349,6 +349,25 @@ export class RTC {
     return this.camStream || raw;
   }
 
+  async startMicOnly() {
+    const raw = await navigator.mediaDevices.getUserMedia({
+      video: false,
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: { ideal: 2 }, sampleRate: { ideal: 48000 } }
+    });
+    this.rawCamStream = raw;
+
+    try {
+      this.camStream = await this.dsp.process(raw);
+    } catch (e) {
+      this.camStream = raw;
+    }
+
+    if (this.conn?.open) {
+      this._call(this.conn.peer, this.camStream || raw, 'cam');
+    }
+    return this.camStream || raw;
+  }
+
   stopCam() {
     if (this.rawCamStream) {
       this.rawCamStream.getTracks().forEach(t => t.stop());
