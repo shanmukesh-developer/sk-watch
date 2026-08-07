@@ -62,6 +62,21 @@
           <code id="roomIdDisplay">---</code>
           <button class="sm-btn" id="copyIdBtn" title="Copy Room ID"><i data-lucide="copy" style="width:14px;height:14px"></i></button>
         </div>
+        <!-- Connection Quality Indicator -->
+        <div class="quality-indicator" id="qualityIndicator" style="display:none" title="Connection Quality">
+          <div class="signal-bars" id="signalBars">
+            <span class="bar bar-1"></span>
+            <span class="bar bar-2"></span>
+            <span class="bar bar-3"></span>
+            <span class="bar bar-4"></span>
+          </div>
+          <span class="quality-label" id="qualityLabel">--</span>
+        </div>
+        <!-- Partner Presence Badge -->
+        <div class="presence-badge" id="presenceBadge" style="display:none">
+          <span class="presence-dot" id="presenceDot"></span>
+          <span class="presence-text" id="presenceText">Partner</span>
+        </div>
       </div>
 
       <div class="header-right">
@@ -86,6 +101,14 @@
         <!-- Authentic 35mm Celluloid Film Grain Overlay -->
         <div id="filmGrainOverlay" class="film-grain-overlay"></div>
 
+        <!-- Drag & Drop Video Overlay -->
+        <div class="drop-zone-overlay" id="dropZoneOverlay">
+          <div class="drop-zone-content">
+            <i data-lucide="upload-cloud" style="width:48px;height:48px"></i>
+            <span>Drop video file here</span>
+          </div>
+        </div>
+
         <!-- Main Video Stage (Zoom Grid / Spotlight) -->
         <div class="video-stage" id="videoStage">
 
@@ -99,7 +122,7 @@
 
             <div class="card-overlay">
               <span class="participant-name" id="mainStreamLabel"><i data-lucide="monitor" style="width:13px;height:13px"></i> HD Theater Stream</span>
-              <span class="stream-badge">1080p 60FPS</span>
+              <span class="stream-badge" id="streamBadge">1080p 60FPS</span>
             </div>
           </div>
 
@@ -107,11 +130,11 @@
           <div class="video-card card-participant" id="cardLocal">
             <video id="localCam" autoplay playsinline muted></video>
             <div class="avatar-fallback" id="localAvatar">
-              <div class="avatar-circle">SK</div>
-              <span class="avatar-sub">Shanmukh</span>
+              <div class="avatar-circle" id="localAvatarCircle">SK</div>
+              <span class="avatar-sub" id="localAvatarName">Shanmukh</span>
             </div>
             <div class="card-overlay">
-              <span class="participant-name">Shanmukh <span class="host-tag">(You)</span></span>
+              <span class="participant-name"><span id="localNickname">Shanmukh</span> <span class="host-tag">(You)</span></span>
               <div class="card-status">
                 <span class="mic-status" id="localMicBadge"><i data-lucide="mic" style="width:13px;height:13px"></i></span>
               </div>
@@ -123,11 +146,11 @@
           <div class="video-card card-participant" id="cardRemote">
             <video id="remoteCam" autoplay playsinline></video>
             <div class="avatar-fallback" id="remoteAvatar">
-              <div class="avatar-circle">K</div>
-              <span class="avatar-sub">Kavya</span>
+              <div class="avatar-circle" id="remoteAvatarCircle">K</div>
+              <span class="avatar-sub" id="remoteAvatarName">Kavya</span>
             </div>
             <div class="card-overlay">
-              <span class="participant-name">Kavya <span class="guest-tag">(Partner)</span></span>
+              <span class="participant-name"><span id="remoteNickname">Kavya</span> <span class="guest-tag">(Partner)</span></span>
               <div class="card-status">
                 <span class="mic-status" id="remoteMicBadge"><i data-lucide="mic" style="width:13px;height:13px"></i></span>
               </div>
@@ -139,6 +162,7 @@
 
         <!-- Welcome state overlay -->
         <div class="welcome" id="welcome">
+          <div class="welcome-particles" id="welcomeParticles"></div>
           <div class="welcome-icon">🎬</div>
           <h2>Ready for Movie Night</h2>
           <p>Share your screen with HD audio or load a local video file to sync together</p>
@@ -167,11 +191,33 @@
         <!-- Emoji overlay -->
         <div class="emoji-layer" id="emojiLayer"></div>
 
+        <!-- Reconnecting overlay -->
+        <div class="reconnecting-overlay" id="reconnectingOverlay" style="display:none">
+          <div class="reconnecting-content">
+            <div class="reconnecting-spinner"></div>
+            <span id="reconnectingText">Reconnecting...</span>
+          </div>
+        </div>
+
         <!-- Zoom Controls Dock -->
         <div class="controls" id="controls">
           <button class="ctrl-btn" id="playPauseBtn" title="Play/Pause"><i data-lucide="play" style="width:18px;height:18px"></i></button>
+          <!-- Skip Back 10s -->
+          <button class="ctrl-btn hide-mobile" id="skipBackBtn" title="Skip Back 10s (←)"><i data-lucide="skip-back" style="width:14px;height:14px"></i></button>
           <span class="ctrl-time" id="timeLabel">--:-- / --:--</span>
           <input type="range" class="ctrl-seek" id="seekBar" value="0" min="0" max="1000" step="1">
+          <!-- Skip Forward 10s -->
+          <button class="ctrl-btn hide-mobile" id="skipFwdBtn" title="Skip Forward 10s (→)"><i data-lucide="skip-forward" style="width:14px;height:14px"></i></button>
+
+          <!-- Playback Speed -->
+          <select id="speedSelect" class="ctrl-select hide-mobile" title="Playback Speed">
+            <option value="0.5">0.5x</option>
+            <option value="0.75">0.75x</option>
+            <option value="1" selected>1x</option>
+            <option value="1.25">1.25x</option>
+            <option value="1.5">1.5x</option>
+            <option value="2">2x</option>
+          </select>
 
           <label class="ctrl-btn hide-mobile" for="subFileIn" title="Load Subtitles (.srt / .vtt)">
             <i data-lucide="subtitles" style="width:16px;height:16px"></i>
@@ -202,14 +248,18 @@
           <button class="ctrl-btn" id="camBtn" title="Camera (C)"><i data-lucide="video" style="width:16px;height:16px"></i></button>
           <button class="ctrl-btn" id="micBtn" title="Mic (M)"><i data-lucide="mic" style="width:16px;height:16px"></i></button>
           <button class="ctrl-btn active" id="noiseBtn" title="Noise Filter"><i data-lucide="shield-check" style="width:16px;height:16px"></i></button>
+          <!-- Native PIP Button -->
+          <button class="ctrl-btn hide-mobile" id="nativePipBtn" title="Picture-in-Picture (P)"><i data-lucide="picture-in-picture" style="width:16px;height:16px"></i></button>
           <button class="ctrl-btn" id="fsBtn" title="Fullscreen (F)"><i data-lucide="maximize" style="width:16px;height:16px"></i></button>
+          <!-- Keyboard Shortcuts -->
+          <button class="ctrl-btn hide-mobile" id="shortcutsBtn" title="Keyboard Shortcuts (?)"><i data-lucide="keyboard" style="width:16px;height:16px"></i></button>
         </div>
       </div>
 
       <!-- Sidebar -->
       <aside class="sidebar" id="sidebar">
         <div class="side-tabs">
-          <button class="side-tab active" data-panel="chatPanel"><i data-lucide="message-circle" style="width:14px;height:14px"></i> Chat</button>
+          <button class="side-tab active" data-panel="chatPanel"><i data-lucide="message-circle" style="width:14px;height:14px"></i> Chat <span class="unread-badge" id="chatUnreadBadge" style="display:none">0</span></button>
           <button class="side-tab" data-panel="audioPanel"><i data-lucide="sliders" style="width:14px;height:14px"></i> Audio</button>
           <button class="side-tab" data-panel="soundPanel"><i data-lucide="volume-2" style="width:14px;height:14px"></i> FX</button>
         </div>
@@ -218,6 +268,13 @@
         <div class="side-panel active" id="chatPanel">
           <div class="chat-log" id="chatLog">
             <div class="sys-msg">Welcome to Shanmukh & Kavya's Private Theater! Create or join a room to start.</div>
+          </div>
+          <!-- Typing Indicator -->
+          <div class="typing-indicator" id="typingIndicator" style="display:none">
+            <div class="typing-dots">
+              <span></span><span></span><span></span>
+            </div>
+            <span class="typing-text" id="typingText">Partner is typing...</span>
           </div>
           <form class="chat-form" id="chatForm">
             <input type="text" id="chatIn" placeholder="Message..." autocomplete="off">
@@ -240,6 +297,15 @@
             <div class="meter-wrap">
               <span>Mic Level</span>
               <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
+            </div>
+
+            <!-- Connection Stats Panel -->
+            <div class="stats-panel" id="statsPanel">
+              <h4>📊 Connection Stats</h4>
+              <div class="cfg-row"><span>Latency (RTT)</span><span id="statsRtt">-- ms</span></div>
+              <div class="cfg-row"><span>Packet Loss</span><span id="statsPacketLoss">-- %</span></div>
+              <div class="cfg-row"><span>Resolution</span><span id="statsResolution">--</span></div>
+              <div class="cfg-row"><span>Frame Rate</span><span id="statsFps">-- fps</span></div>
             </div>
           </div>
         </div>
@@ -305,8 +371,17 @@
         <button class="btn-icon" id="closeModalBtn"><i data-lucide="x" style="width:18px;height:18px"></i></button>
       </div>
       <div class="modal-body">
+        <!-- Nickname Section -->
+        <div class="modal-section">
+          <p class="modal-label">Your Nickname</p>
+          <input type="text" id="nicknameInput" class="modal-input" placeholder="Enter your name..." value="" maxlength="20">
+        </div>
+
         <div class="modal-section" id="createSection">
           <p class="modal-label">Create a new room</p>
+          <div class="password-row">
+            <input type="password" id="roomPasswordInput" class="modal-input" placeholder="Room password (optional)" maxlength="32">
+          </div>
           <button class="btn-primary w-full" id="createBtn"><i data-lucide="plus" style="width:16px;height:16px"></i> Create Room</button>
         </div>
 
@@ -333,7 +408,34 @@
             <input type="text" id="joinInput" placeholder="Paste Room ID (e.g. sk-123456)...">
             <button class="btn-primary" id="joinBtn">Join</button>
           </div>
+          <div class="password-row" id="joinPasswordRow" style="display:none">
+            <input type="password" id="joinPasswordInput" class="modal-input" placeholder="Enter room password...">
+          </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyboard Shortcuts Modal -->
+  <div class="modal-bg" id="shortcutsModal">
+    <div class="modal shortcuts-modal">
+      <div class="modal-top">
+        <h3>⌨️ Keyboard Shortcuts</h3>
+        <button class="btn-icon" id="closeShortcutsBtn"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+      </div>
+      <div class="shortcuts-grid">
+        <div class="shortcut-item"><kbd>Space</kbd><span>Play / Pause</span></div>
+        <div class="shortcut-item"><kbd>←</kbd><span>Skip Back 10s</span></div>
+        <div class="shortcut-item"><kbd>→</kbd><span>Skip Forward 10s</span></div>
+        <div class="shortcut-item"><kbd>M</kbd><span>Toggle Microphone</span></div>
+        <div class="shortcut-item"><kbd>C</kbd><span>Toggle Camera</span></div>
+        <div class="shortcut-item"><kbd>F</kbd><span>Toggle Fullscreen</span></div>
+        <div class="shortcut-item"><kbd>T</kbd><span>Theater Mode</span></div>
+        <div class="shortcut-item"><kbd>G</kbd><span>Toggle Grid / Stage</span></div>
+        <div class="shortcut-item"><kbd>P</kbd><span>Picture-in-Picture</span></div>
+        <div class="shortcut-item"><kbd>?</kbd><span>Show Shortcuts</span></div>
+        <div class="shortcut-item"><kbd>Esc</kbd><span>Close Modal</span></div>
+        <div class="shortcut-item"><kbd>[ / ]</kbd><span>Adjust Speed</span></div>
       </div>
     </div>
   </div>

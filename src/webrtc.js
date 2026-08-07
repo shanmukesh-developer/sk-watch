@@ -11,17 +11,38 @@ export class RTC {
     this.screenStream = null;
     this.dsp = new AudioDSP();
 
+    // Reconnection state
+    this._targetPeerId = null;
+    this._reconnectAttempts = 0;
+    this._maxReconnectAttempts = 5;
+    this._reconnectTimer = null;
+    this._heartbeatInterval = null;
+    this._heartbeatMissed = 0;
+    this._maxMissedHeartbeats = 3;
+    this._lastHeartbeat = 0;
+    this._isReconnecting = false;
+    this._initOpts = null;
+    this._customId = null;
+    this._destroyed = false;
+
+    // Connection stats
+    this._statsInterval = null;
+    this._latestStats = { rtt: 0, bitrate: 0, packetLoss: 0, resolution: '', fps: 0 };
+
     this.cb = {
       onStatus: cb.onStatus || (() => {}),
       onConnect: cb.onConnect || (() => {}),
       onDisconnect: cb.onDisconnect || (() => {}),
       onScreen: cb.onScreen || (() => {}),
       onCam: cb.onCam || (() => {}),
-      onData: cb.onData || (() => {})
+      onData: cb.onData || (() => {}),
+      onReconnecting: cb.onReconnecting || (() => {}),
+      onStats: cb.onStats || (() => {})
     };
   }
 
   init(customId) {
+    this._customId = customId;
     return new Promise((resolve, reject) => {
       const isHttps = window.location.protocol === 'https:';
       const host = window.location.hostname || 'localhost';
@@ -99,6 +120,7 @@ export class RTC {
           }
 
           this.peer = config.id ? new Peer(config.id, config.opts) : new Peer(config.opts);
+          this._initOpts = config;
 
           let resolved = false;
 
@@ -106,6 +128,7 @@ export class RTC {
             if (resolved) return;
             resolved = true;
             this.id = id;
+            this._destroyed = false;
             console.log(`[RTC Signaling] Connected via ${config.name}! Room ID: ${id}`);
             this.cb.onStatus('ready', id);
             resolve(id);
@@ -143,6 +166,8 @@ export class RTC {
 
   connect(targetId) {
     if (!targetId) return;
+    this._targetPeerId = targetId;
+    this._reconnectAttempts = 0;
 
     if (!this.peer) {
       console.warn('[RTC Connect] Peer instance not initialized');
@@ -151,8 +176,8 @@ export class RTC {
     }
 
     if (this.peer.destroyed) {
-      console.warn('[RTC Connect] Peer instance destroyed');
-      this.cb.onStatus('error', 'Signaling lost. Refresh page.');
+      console.warn('[RTC Connect] Peer instance destroyed, re-initializing...');
+      this._reinitAndConnect(targetId);
       return;
     }
 
@@ -178,8 +203,85 @@ export class RTC {
     }
   }
 
+  // Re-initialize peer and reconnect after destroy
+  async _reinitAndConnect(targetId) {
+    try {
+      this.cb.onStatus('connecting');
+      this.cb.onReconnecting(this._reconnectAttempts + 1, this._maxReconnectAttempts);
+      await this.init(this._customId);
+      this.connect(targetId);
+    } catch (err) {
+      console.error('[RTC Reinit Error]', err);
+      this.cb.onStatus('error', 'Could not reconnect to signaling server');
+    }
+  }
+
+  // Auto-reconnect with exponential backoff
+  _scheduleReconnect() {
+    if (this._isReconnecting || this._destroyed) return;
+    if (this._reconnectAttempts >= this._maxReconnectAttempts) {
+      console.warn('[RTC Reconnect] Max reconnection attempts reached');
+      this.cb.onStatus('error', 'Connection lost. Please refresh and rejoin.');
+      return;
+    }
+
+    this._isReconnecting = true;
+    this._reconnectAttempts++;
+    const delay = Math.min(2000 * Math.pow(2, this._reconnectAttempts - 1), 16000);
+    console.log(`[RTC Reconnect] Attempt ${this._reconnectAttempts}/${this._maxReconnectAttempts} in ${delay}ms...`);
+    this.cb.onReconnecting(this._reconnectAttempts, this._maxReconnectAttempts);
+
+    clearTimeout(this._reconnectTimer);
+    this._reconnectTimer = setTimeout(() => {
+      this._isReconnecting = false;
+      if (this._targetPeerId) {
+        if (this.peer && this.peer.destroyed) {
+          this._reinitAndConnect(this._targetPeerId);
+        } else {
+          this.connect(this._targetPeerId);
+        }
+      }
+    }, delay);
+  }
+
+  // Heartbeat system
+  _startHeartbeat() {
+    this._stopHeartbeat();
+    this._heartbeatMissed = 0;
+    this._lastHeartbeat = Date.now();
+
+    this._heartbeatInterval = setInterval(() => {
+      if (this.conn?.open) {
+        this.send('__HEARTBEAT__', { ts: Date.now() });
+        this._heartbeatMissed++;
+
+        if (this._heartbeatMissed >= this._maxMissedHeartbeats) {
+          console.warn('[RTC Heartbeat] Partner unresponsive, triggering reconnection...');
+          this._stopHeartbeat();
+          this._scheduleReconnect();
+        }
+      } else {
+        this._stopHeartbeat();
+      }
+    }, 5000);
+  }
+
+  _stopHeartbeat() {
+    if (this._heartbeatInterval) {
+      clearInterval(this._heartbeatInterval);
+      this._heartbeatInterval = null;
+    }
+  }
+
+  _onHeartbeatReceived() {
+    this._heartbeatMissed = 0;
+    this._lastHeartbeat = Date.now();
+    this._reconnectAttempts = 0; // Reset on successful heartbeat
+  }
+
   _handleConn(c, targetId) {
     this.conn = c;
+    if (targetId) this._targetPeerId = targetId;
 
     // Timeout safety net: If connection stays stuck connecting for 15 seconds
     const connTimeout = setTimeout(() => {
@@ -192,9 +294,14 @@ export class RTC {
 
     c.on('open', () => {
       clearTimeout(connTimeout);
+      this._targetPeerId = c.peer;
+      this._reconnectAttempts = 0;
+      this._isReconnecting = false;
       console.log('[RTC DataConnection Open] Connected to peer:', c.peer);
       this.cb.onConnect(c.peer);
       this.cb.onStatus('connected');
+      this._startHeartbeat();
+      this._startStatsMonitor();
 
       // Send existing active streams to newly connected peer immediately
       if (this.screenStream) {
@@ -205,12 +312,37 @@ export class RTC {
       }
     });
 
-    c.on('data', d => this.cb.onData(d));
+    c.on('data', d => {
+      // Handle internal heartbeat
+      if (d && d.type === '__HEARTBEAT__') {
+        this._onHeartbeatReceived();
+        // Echo heartbeat response
+        if (this.conn?.open) {
+          try { this.conn.send({ type: '__HEARTBEAT_ACK__', payload: { ts: Date.now() }, ts: Date.now() }); } catch (e) {}
+        }
+        return;
+      }
+      if (d && d.type === '__HEARTBEAT_ACK__') {
+        this._onHeartbeatReceived();
+        // Calculate RTT
+        if (d.payload?.ts) {
+          this._latestStats.rtt = Date.now() - (d.ts || d.payload.ts);
+        }
+        return;
+      }
+      this.cb.onData(d);
+    });
 
     c.on('close', () => {
       clearTimeout(connTimeout);
+      this._stopHeartbeat();
+      this._stopStatsMonitor();
       this.cb.onDisconnect();
       this.cb.onStatus('disconnected');
+      // Auto-reconnect if we had a target peer
+      if (this._targetPeerId && !this._destroyed) {
+        this._scheduleReconnect();
+      }
     });
 
     c.on('error', err => {
@@ -229,6 +361,7 @@ export class RTC {
     if (type === 'cam') this.camCall = call;
 
     this._optimizeCall(call);
+    this._monitorIceState(call);
 
     call.on('stream', remoteStream => {
       if (remoteStream && remoteStream.getTracks().length > 0) {
@@ -262,6 +395,7 @@ export class RTC {
     if (type === 'cam') this.camCall = call;
 
     this._optimizeCall(call);
+    this._monitorIceState(call);
 
     call.on('stream', remoteStream => {
       if (remoteStream && remoteStream.getTracks().length > 0) {
@@ -302,6 +436,100 @@ export class RTC {
       } catch (e) {}
     };
     setTimeout(update, 500);
+  }
+
+  // Monitor ICE connection state and attempt restart on failure
+  _monitorIceState(call) {
+    if (!call || !call.peerConnection) return;
+    const pc = call.peerConnection;
+    pc.addEventListener('iceconnectionstatechange', () => {
+      const state = pc.iceConnectionState;
+      console.log(`[RTC ICE] State: ${state}`);
+      if (state === 'failed') {
+        console.warn('[RTC ICE] Connection failed, attempting ICE restart...');
+        try {
+          pc.restartIce();
+        } catch (e) {
+          console.error('[RTC ICE Restart Error]', e);
+        }
+      }
+      if (state === 'disconnected') {
+        // Wait briefly — may recover automatically
+        setTimeout(() => {
+          if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+            console.warn('[RTC ICE] Still disconnected after timeout');
+          }
+        }, 5000);
+      }
+    });
+  }
+
+  // Connection stats monitoring
+  _startStatsMonitor() {
+    this._stopStatsMonitor();
+    this._statsInterval = setInterval(() => this._collectStats(), 3000);
+  }
+
+  _stopStatsMonitor() {
+    if (this._statsInterval) {
+      clearInterval(this._statsInterval);
+      this._statsInterval = null;
+    }
+  }
+
+  async _collectStats() {
+    const call = this.screenCall || this.camCall;
+    if (!call || !call.peerConnection) return;
+    try {
+      const stats = await call.peerConnection.getStats();
+      let totalBytesSent = 0;
+      let totalBytesReceived = 0;
+      let packetLoss = 0;
+      let resolution = '';
+      let fps = 0;
+
+      stats.forEach(report => {
+        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+          if (report.currentRoundTripTime) {
+            this._latestStats.rtt = Math.round(report.currentRoundTripTime * 1000);
+          }
+        }
+        if (report.type === 'inbound-rtp' && report.kind === 'video') {
+          if (report.packetsLost !== undefined && report.packetsReceived) {
+            packetLoss = Math.round((report.packetsLost / (report.packetsReceived + report.packetsLost)) * 100);
+          }
+          if (report.frameWidth && report.frameHeight) {
+            resolution = `${report.frameWidth}x${report.frameHeight}`;
+          }
+          if (report.framesPerSecond) {
+            fps = Math.round(report.framesPerSecond);
+          }
+        }
+        if (report.type === 'outbound-rtp' && report.kind === 'video') {
+          totalBytesSent += report.bytesSent || 0;
+          if (report.frameWidth && report.frameHeight && !resolution) {
+            resolution = `${report.frameWidth}x${report.frameHeight}`;
+          }
+          if (report.framesPerSecond && !fps) {
+            fps = Math.round(report.framesPerSecond);
+          }
+        }
+        if (report.type === 'inbound-rtp') {
+          totalBytesReceived += report.bytesReceived || 0;
+        }
+      });
+
+      this._latestStats.packetLoss = packetLoss;
+      this._latestStats.resolution = resolution;
+      this._latestStats.fps = fps;
+      this._latestStats.bitrate = Math.round((totalBytesSent + totalBytesReceived) / 1024); // KB
+
+      this.cb.onStats({ ...this._latestStats });
+    } catch (e) {}
+  }
+
+  getStats() {
+    return { ...this._latestStats };
   }
 
   async shareScreen() {
@@ -486,5 +714,15 @@ export class RTC {
 
   send(type, payload) {
     if (this.conn?.open) this.conn.send({ type, payload, ts: Date.now() });
+  }
+
+  destroy() {
+    this._destroyed = true;
+    this._stopHeartbeat();
+    this._stopStatsMonitor();
+    clearTimeout(this._reconnectTimer);
+    if (this.peer && !this.peer.destroyed) {
+      try { this.peer.destroy(); } catch (e) {}
+    }
   }
 }

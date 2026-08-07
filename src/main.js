@@ -11,8 +11,87 @@ document.addEventListener('DOMContentLoaded', () => {
   let syncMode = false;
   let sharing = false;
   let pipMini = false;
+  let nickname = '';
+  let partnerNickname = 'Partner';
+  let roomPassword = '';
+  let unreadCount = 0;
+  let tabFocused = true;
+  let originalTitle = document.title;
+  let titleFlashInterval = null;
+  let partnerPresence = 'away';
+  let presenceInterval = null;
+  let typingTimeout = null;
+  let isTyping = false;
 
   const sfx = new SoundFXEngine();
+
+  // ─── Load Persistent Settings ───
+  function loadSettings() {
+    try {
+      nickname = localStorage.getItem('sk_nickname') || '';
+      const saved = localStorage.getItem('sk_settings');
+      if (saved) {
+        const s = JSON.parse(saved);
+        if (s.volume !== undefined && volSlider) volSlider.value = s.volume;
+        if (s.noiseFilter !== undefined && noiseCheck) noiseCheck.checked = s.noiseFilter;
+        if (s.gate !== undefined && gateSlider) gateSlider.value = s.gate;
+        if (s.gain !== undefined && gainSlider) gainSlider.value = s.gain;
+        if (s.viewMode) currentViewMode = s.viewMode;
+      }
+    } catch (e) {}
+  }
+
+  function saveSettings() {
+    try {
+      localStorage.setItem('sk_nickname', nickname);
+      localStorage.setItem('sk_settings', JSON.stringify({
+        volume: volSlider?.value || 100,
+        noiseFilter: noiseCheck?.checked ?? true,
+        gate: gateSlider?.value || -30,
+        gain: gainSlider?.value || 10,
+        viewMode: currentViewMode
+      }));
+    } catch (e) {}
+  }
+
+  // ─── Browser Notification Permission ───
+  function requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }
+
+  function showNotification(title, body) {
+    if (!tabFocused && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(title, { body, icon: '🎬', silent: false });
+      } catch (e) {}
+    }
+  }
+
+  // ─── Tab Focus Tracking ───
+  window.addEventListener('focus', () => {
+    tabFocused = true;
+    stopTitleFlash();
+  });
+  window.addEventListener('blur', () => { tabFocused = false; });
+
+  function flashTitle(msg) {
+    if (titleFlashInterval) return;
+    let toggle = false;
+    titleFlashInterval = setInterval(() => {
+      document.title = toggle ? msg : originalTitle;
+      toggle = !toggle;
+    }, 1000);
+  }
+
+  function stopTitleFlash() {
+    if (titleFlashInterval) {
+      clearInterval(titleFlashInterval);
+      titleFlashInterval = null;
+      document.title = originalTitle;
+    }
+  }
 
   // ─── Authentic Marvel Studios Stencil Letter-Mask Engine ───
   const marvelIntro = document.getElementById('marvelIntro');
@@ -54,15 +133,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const w = flipCanvas.width;
       const h = flipCanvas.height;
 
-      // 1. Render vibrant high-contrast comic panels onto flipCanvas
       flipCtx.clearRect(0, 0, w, h);
       const theme = panelThemes[frameIndex % panelThemes.length];
 
-      // Base background
       flipCtx.fillStyle = theme[3];
       flipCtx.fillRect(0, 0, w, h);
 
-      // Bright comic action splotches & slashes
       const bandOffset = (frameIndex * 40) % w;
       flipCtx.fillStyle = theme[0];
       flipCtx.beginPath();
@@ -73,7 +149,6 @@ document.addEventListener('DOMContentLoaded', () => {
       flipCtx.closePath();
       flipCtx.fill();
 
-      // Golden highlight band
       flipCtx.fillStyle = theme[2];
       flipCtx.beginPath();
       flipCtx.moveTo(bandOffset + 350, 0);
@@ -83,7 +158,6 @@ document.addEventListener('DOMContentLoaded', () => {
       flipCtx.closePath();
       flipCtx.fill();
 
-      // Crimson action block
       flipCtx.fillStyle = theme[1];
       flipCtx.beginPath();
       flipCtx.moveTo(bandOffset - 500, 0);
@@ -93,7 +167,6 @@ document.addEventListener('DOMContentLoaded', () => {
       flipCtx.closePath();
       flipCtx.fill();
 
-      // Comic halftone dots grid
       flipCtx.fillStyle = 'rgba(255, 255, 255, 0.65)';
       const step = 18;
       const dotOffset = (frameIndex * 6) % step;
@@ -105,7 +178,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      // Dynamic action speed lines
       flipCtx.strokeStyle = '#ffffff';
       flipCtx.lineWidth = 4;
       for (let i = 0; i < 8; i++) {
@@ -116,14 +188,9 @@ document.addEventListener('DOMContentLoaded', () => {
         flipCtx.stroke();
       }
 
-      // 2. Render onto maskedTextCanvas with 'destination-in' text stencil
       maskedCtx.save();
       maskedCtx.clearRect(0, 0, w, h);
-
-      // Copy flipping comic frame onto target canvas
       maskedCtx.drawImage(flipCanvas, 0, 0);
-
-      // Stencil mask: Keep comic frame ONLY inside the letters of SHANMUKH & KAVYA!
       maskedCtx.globalCompositeOperation = 'destination-in';
       maskedCtx.fillStyle = '#ffffff';
       const text = 'SHANMUKH & KAVYA';
@@ -135,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
       maskedCtx.restore();
 
       if (marvelIntro && !marvelIntro.classList.contains('hidden')) {
-        setTimeout(() => requestAnimationFrame(renderMarvelStencilFrame), 42); // 24fps
+        setTimeout(() => requestAnimationFrame(renderMarvelStencilFrame), 42);
       }
     }
     renderMarvelStencilFrame();
@@ -146,6 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
     enterTheaterBtn.addEventListener('click', () => {
       marvelIntro.classList.add('zoom-in');
       playMarvelFanfare();
+      requestNotificationPermission();
       setTimeout(() => {
         marvelIntro.classList.add('hidden');
         setTimeout(() => marvelIntro.remove(), 850);
@@ -156,8 +224,6 @@ document.addEventListener('DOMContentLoaded', () => {
   function playMarvelFanfare() {
     try {
       const c = new (window.AudioContext || window.webkitAudioContext)();
-      
-      // Rhythmic Marvel Drumbeat: BUM... BUM... BUM-BUM-BUM!
       const drumTimes = [0, 0.25, 0.5, 0.65, 0.8];
       drumTimes.forEach(t => {
         const osc = c.createOscillator();
@@ -173,11 +239,10 @@ document.addEventListener('DOMContentLoaded', () => {
         osc.stop(c.currentTime + t + 0.15);
       });
 
-      // Brass Horn Heroic Fanfare Sweep
       const brassNotes = [
-        { f: 293.66, t: 0.8, d: 0.2 },   // D4
-        { f: 440.00, t: 1.0, d: 0.2 },   // A4
-        { f: 587.33, t: 1.2, d: 0.8 }    // D5 Grand Finish
+        { f: 293.66, t: 0.8, d: 0.2 },
+        { f: 440.00, t: 1.0, d: 0.2 },
+        { f: 587.33, t: 1.2, d: 0.8 }
       ];
 
       brassNotes.forEach(n => {
@@ -206,9 +271,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const statusDot = $('statusDot');
   const statusText = $('statusText');
+  const statusPill = $('statusPill');
   const roomPill = $('roomPill');
   const roomIdDisplay = $('roomIdDisplay');
   const copyIdBtn = $('copyIdBtn');
+
+  const qualityIndicator = $('qualityIndicator');
+  const signalBars = $('signalBars');
+  const qualityLabel = $('qualityLabel');
+  const presenceBadge = $('presenceBadge');
+  const presenceDot = $('presenceDot');
+  const presenceText = $('presenceText');
 
   const openRoomBtn = $('openRoomBtn');
   const roomModal = $('roomModal');
@@ -217,6 +290,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const joinInput = $('joinInput');
   const joinBtn = $('joinBtn');
   const theaterBtn = $('theaterBtn');
+  const nicknameInput = $('nicknameInput');
+  const roomPasswordInput = $('roomPasswordInput');
 
   const viewGridBtn = $('viewGridBtn');
   const viewStageBtn = $('viewStageBtn');
@@ -224,6 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const screenEl = $('screen');
   const cardMainStream = $('cardMainStream');
   const mainStreamLabel = $('mainStreamLabel');
+  const streamBadge = $('streamBadge');
 
   const screenVideo = $('screenVideo');
   const localVideo = $('localVideo');
@@ -236,12 +312,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const localAvatar = $('localAvatar');
   const localHalo = $('localHalo');
   const localMicBadge = $('localMicBadge');
+  const localNicknameEl = $('localNickname');
+  const localAvatarCircle = $('localAvatarCircle');
+  const localAvatarName = $('localAvatarName');
 
   const cardRemote = $('cardRemote');
   const remoteCam = $('remoteCam');
   const remoteAvatar = $('remoteAvatar');
   const remoteHalo = $('remoteHalo');
   const remoteMicBadge = $('remoteMicBadge');
+  const remoteNicknameEl = $('remoteNickname');
+  const remoteAvatarCircle = $('remoteAvatarCircle');
+  const remoteAvatarName = $('remoteAvatarName');
 
   const pip = $('pip');
   const pipDrag = $('pipDrag');
@@ -261,11 +343,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const micBtn = $('micBtn');
   const noiseBtn = $('noiseBtn');
   const fsBtn = $('fsBtn');
+  const skipBackBtn = $('skipBackBtn');
+  const skipFwdBtn = $('skipFwdBtn');
+  const speedSelect = $('speedSelect');
+  const nativePipBtn = $('nativePipBtn');
+  const shortcutsBtn = $('shortcutsBtn');
 
   const chatLog = $('chatLog');
   const chatForm = $('chatForm');
   const chatIn = $('chatIn');
   const emojiLayer = $('emojiLayer');
+  const chatUnreadBadge = $('chatUnreadBadge');
+  const typingIndicator = $('typingIndicator');
 
   const noiseCheck = $('noiseCheck');
   const gateSlider = $('gateSlider');
@@ -273,6 +362,25 @@ document.addEventListener('DOMContentLoaded', () => {
   const gainSlider = $('gainSlider');
   const gainVal = $('gainVal');
   const meterFill = $('meterFill');
+
+  const statsRtt = $('statsRtt');
+  const statsPacketLoss = $('statsPacketLoss');
+  const statsResolution = $('statsResolution');
+  const statsFps = $('statsFps');
+
+  const reconnectingOverlay = $('reconnectingOverlay');
+  const reconnectingText = $('reconnectingText');
+  const dropZoneOverlay = $('dropZoneOverlay');
+  const shortcutsModal = $('shortcutsModal');
+  const closeShortcutsBtn = $('closeShortcutsBtn');
+
+  // ─── Load saved settings after DOM refs are ready ───
+  loadSettings();
+
+  // ─── Apply loaded nickname ───
+  if (nicknameInput && nickname) {
+    nicknameInput.value = nickname;
+  }
 
   // ─── Toast ───
   function toast(msg, type = 'info') {
@@ -283,6 +391,25 @@ document.addEventListener('DOMContentLoaded', () => {
     requestAnimationFrame(() => t.classList.add('in'));
     setTimeout(() => { t.classList.remove('in'); t.classList.add('out'); setTimeout(() => t.remove(), 400); }, 3000);
   }
+
+  // ─── Welcome Particles ───
+  function spawnWelcomeParticles() {
+    const container = $('welcomeParticles');
+    if (!container) return;
+    for (let i = 0; i < 25; i++) {
+      const p = document.createElement('div');
+      p.className = 'welcome-particle';
+      p.style.left = Math.random() * 100 + '%';
+      p.style.animationDuration = (8 + Math.random() * 12) + 's';
+      p.style.animationDelay = (Math.random() * 10) + 's';
+      p.style.setProperty('--drift', (Math.random() * 100 - 50) + 'px');
+      p.style.width = (2 + Math.random() * 3) + 'px';
+      p.style.height = p.style.width;
+      p.style.background = Math.random() > 0.5 ? 'var(--cyan)' : 'var(--purple)';
+      container.appendChild(p);
+    }
+  }
+  spawnWelcomeParticles();
 
   // ─── Zoom View Mode Switcher ───
   let currentViewMode = 'grid';
@@ -297,18 +424,16 @@ document.addEventListener('DOMContentLoaded', () => {
       screenEl.classList.add('zoom-grid-view');
       viewGridBtn?.classList.add('active');
       pip.style.display = 'none';
-      toast('Zoom Grid View active', 'info');
     } else if (mode === 'stage') {
       screenEl.classList.add('zoom-stage-view');
       viewStageBtn?.classList.add('active');
       pip.style.display = 'none';
-      toast('Spotlight Stage View active', 'info');
     } else if (mode === 'pip') {
       screenEl.classList.add('zoom-pip-view');
       viewPipBtn?.classList.add('active');
       pip.style.display = 'flex';
-      toast('Picture-in-Picture mode active', 'info');
     }
+    saveSettings();
   }
 
   viewGridBtn?.addEventListener('click', () => setViewMode('grid'));
@@ -320,7 +445,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const hasLocalCam = localCam.srcObject && localCam.srcObject.getVideoTracks().some(t => t.readyState === 'live');
     const hasRemoteCam = remoteCam.srcObject && remoteCam.srcObject.getVideoTracks().some(t => t.readyState === 'live');
 
-    // Local Camera Tile
     if (hasLocalCam && camOn) {
       localCam.style.display = 'block';
       localAvatar.style.display = 'none';
@@ -331,7 +455,6 @@ document.addEventListener('DOMContentLoaded', () => {
     localMicBadge.innerHTML = micOn ? `<i data-lucide="mic" style="width:13px;height:13px"></i>` : `<i data-lucide="mic-off" style="width:13px;height:13px"></i>`;
     localMicBadge.className = `mic-status ${micOn ? '' : 'off'}`;
 
-    // Remote Camera Tile
     if (hasRemoteCam) {
       remoteCam.style.display = 'block';
       remoteAvatar.style.display = 'none';
@@ -342,7 +465,6 @@ document.addEventListener('DOMContentLoaded', () => {
       pipOff.style.display = 'flex';
     }
 
-    // Sync to PIP video streams if in PIP mode
     if (pipRemoteCam && pipRemoteCam.srcObject !== remoteCam.srcObject) {
       pipRemoteCam.srcObject = remoteCam.srcObject;
     }
@@ -353,13 +475,35 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.lucide) lucide.createIcons();
   }
 
-  // ─── Tabs ───
+  // ─── Update nickname display ───
+  function updateNicknameDisplay() {
+    const initial = nickname ? nickname.charAt(0).toUpperCase() : 'S';
+    const displayName = nickname || 'Shanmukh';
+    if (localNicknameEl) localNicknameEl.textContent = displayName;
+    if (localAvatarCircle) localAvatarCircle.textContent = initial + (nickname.length > 1 ? nickname.charAt(1).toUpperCase() : '');
+    if (localAvatarName) localAvatarName.textContent = displayName;
+  }
+
+  function updatePartnerNicknameDisplay(name) {
+    partnerNickname = name || 'Partner';
+    const initial = partnerNickname.charAt(0).toUpperCase();
+    if (remoteNicknameEl) remoteNicknameEl.textContent = partnerNickname;
+    if (remoteAvatarCircle) remoteAvatarCircle.textContent = initial;
+    if (remoteAvatarName) remoteAvatarName.textContent = partnerNickname;
+    if (presenceText) presenceText.textContent = partnerNickname;
+  }
+
+  // ─── Tabs with unread reset ───
   document.querySelectorAll('.side-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('.side-tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.side-panel').forEach(p => p.classList.remove('active'));
       tab.classList.add('active');
       $(tab.dataset.panel).classList.add('active');
+      if (tab.dataset.panel === 'chatPanel') {
+        unreadCount = 0;
+        if (chatUnreadBadge) chatUnreadBadge.style.display = 'none';
+      }
     });
   });
 
@@ -386,29 +530,43 @@ document.addEventListener('DOMContentLoaded', () => {
   const rtc = new RTC({
     onStatus: (s, detail) => {
       statusDot.className = 'dot' + (s === 'connected' || s === 'ready' ? ' on' : '');
+      statusPill.classList.toggle('connecting', s === 'connecting');
       const labels = { ready: 'Ready', connecting: 'Connecting...', connected: 'Connected', disconnected: 'Offline', error: 'Error' };
       statusText.textContent = labels[s] || s;
 
       if (s === 'error') {
         toast(detail || 'Connection failed', 'warn');
-        sysMsg(`⚠️ Signaling / Room Status: ${detail || 'Error'}`);
+        sysMsg(`⚠️ ${detail || 'Error'}`);
       } else if (s === 'connected') {
         toast('Connected to room partner!', 'ok');
+        if (reconnectingOverlay) reconnectingOverlay.style.display = 'none';
+        if (presenceBadge) presenceBadge.style.display = 'flex';
+        if (qualityIndicator) qualityIndicator.style.display = 'flex';
+        // Send nickname on connect
+        rtc.send('IDENTITY', { nickname });
+        startPresencePing();
       } else if (s === 'connecting') {
         sysMsg('🔄 Connecting to peer...');
+      } else if (s === 'disconnected') {
+        if (presenceBadge) presenceBadge.style.display = 'none';
+        if (qualityIndicator) qualityIndicator.style.display = 'none';
+        stopPresencePing();
       }
     },
     onConnect: (pid) => {
       sysMsg('🎉 Partner connected!');
       toast('Partner joined!', 'ok');
+      showNotification('SK WatchParty', 'Partner joined the room!');
       if (syncMode && localVideo && !localVideo.paused) {
-        rtc.send('SYNC', { a: 'play', t: localVideo.currentTime });
+        rtc.send('SYNC', { a: 'play', t: localVideo.currentTime, speed: localVideo.playbackRate });
       }
     },
     onDisconnect: () => {
       sysMsg('Partner disconnected.');
       toast('Partner left', 'warn');
+      showNotification('SK WatchParty', 'Partner disconnected.');
       updateParticipantCards();
+      updatePresenceUI('away');
     },
     onScreen: (stream) => {
       if (stream) {
@@ -419,12 +577,13 @@ document.addEventListener('DOMContentLoaded', () => {
         localVideo.style.display = 'none';
         cardMainStream.style.display = 'flex';
         welcome.style.display = 'none';
-        setViewMode('stage'); // Switch to Spotlight view when receiving screen share
+        setViewMode('stage');
         screenVideo.play().catch(err => {
           console.log('Auto-play blocked, tap banner to enable', err);
           if (tapUnmute) tapUnmute.style.display = 'flex';
         });
         toast('Receiving HD screen & audio!', 'ok');
+        showNotification('SK WatchParty', 'Partner started screen sharing!');
       } else {
         sharing = false;
         screenVideo.srcObject = null;
@@ -454,9 +613,61 @@ document.addEventListener('DOMContentLoaded', () => {
         updateParticipantCards();
       }
     },
-    onData: (d) => handleData(d)
+    onData: (d) => handleData(d),
+    onReconnecting: (attempt, max) => {
+      if (reconnectingOverlay) reconnectingOverlay.style.display = 'flex';
+      if (reconnectingText) reconnectingText.textContent = `Reconnecting... (${attempt}/${max})`;
+      sysMsg(`🔄 Reconnecting attempt ${attempt}/${max}...`);
+    },
+    onStats: (stats) => {
+      if (statsRtt) statsRtt.textContent = `${stats.rtt} ms`;
+      if (statsPacketLoss) statsPacketLoss.textContent = `${stats.packetLoss}%`;
+      if (statsResolution) statsResolution.textContent = stats.resolution || '--';
+      if (statsFps) statsFps.textContent = `${stats.fps || '--'} fps`;
+      if (streamBadge && stats.resolution) {
+        streamBadge.textContent = `${stats.resolution} ${stats.fps}FPS`;
+      }
+      updateQualityIndicator(stats);
+    }
   });
 
+  // ─── Connection Quality UI ───
+  function updateQualityIndicator(stats) {
+    if (!signalBars || !qualityLabel) return;
+    let quality = 'excellent';
+    if (stats.rtt > 200 || stats.packetLoss > 5) quality = 'poor';
+    else if (stats.rtt > 100 || stats.packetLoss > 2) quality = 'fair';
+    else if (stats.rtt > 50 || stats.packetLoss > 0.5) quality = 'good';
+
+    signalBars.className = `signal-bars ${quality}`;
+    const labels = { excellent: '●', good: '●', fair: '●', poor: '●' };
+    qualityLabel.textContent = `${stats.rtt}ms`;
+  }
+
+  // ─── Presence System ───
+  function startPresencePing() {
+    stopPresencePing();
+    presenceInterval = setInterval(() => {
+      rtc.send('PRESENCE', { status: 'active', nickname });
+    }, 10000);
+    rtc.send('PRESENCE', { status: 'active', nickname });
+  }
+
+  function stopPresencePing() {
+    if (presenceInterval) {
+      clearInterval(presenceInterval);
+      presenceInterval = null;
+    }
+  }
+
+  function updatePresenceUI(status) {
+    partnerPresence = status;
+    if (presenceDot) {
+      presenceDot.className = `presence-dot ${status}`;
+    }
+  }
+
+  // ─── Room Setup ───
   const createdRoomCard = $('createdRoomCard');
   const modalRoomId = $('modalRoomId');
   const modalCopyBtn = $('modalCopyBtn');
@@ -466,13 +677,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const rtcPromise = rtc.init(myId).then(id => {
     roomId = id;
     if (roomIdDisplay) roomIdDisplay.textContent = id;
-    if (modalRoomId && modalRoomId.textContent === 'Generating Room ID...') {
-      modalRoomId.textContent = id;
-    } else if (modalRoomId) {
-      modalRoomId.textContent = id;
-    }
+    if (modalRoomId) modalRoomId.textContent = id;
 
-    // Check URL parameters for direct room auto-join link (e.g. ?room=sk-123456)
     const urlParams = new URLSearchParams(window.location.search);
     const joinRoomParam = urlParams.get('room') || urlParams.get('join');
     if (joinRoomParam && joinRoomParam !== id) {
@@ -490,7 +696,22 @@ document.addEventListener('DOMContentLoaded', () => {
   closeModalBtn.addEventListener('click', () => roomModal.classList.remove('open'));
   roomModal.addEventListener('click', e => { if (e.target === roomModal) roomModal.classList.remove('open'); });
 
+  // Nickname input handler
+  if (nicknameInput) {
+    nicknameInput.addEventListener('input', e => {
+      nickname = e.target.value.trim();
+      updateNicknameDisplay();
+      saveSettings();
+    });
+  }
+
   createBtn.addEventListener('click', async () => {
+    // Save nickname and password
+    nickname = nicknameInput?.value?.trim() || '';
+    roomPassword = roomPasswordInput?.value || '';
+    updateNicknameDisplay();
+    saveSettings();
+
     roomPill.style.display = 'flex';
     if (createdRoomCard) createdRoomCard.style.display = 'block';
 
@@ -531,6 +752,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function doJoin() {
     const tid = joinInput.value.trim();
     if (!tid) return toast('Enter a Room ID', 'warn');
+    nickname = nicknameInput?.value?.trim() || nickname;
+    updateNicknameDisplay();
+    saveSettings();
     rtc.connect(tid);
     roomPill.style.display = 'flex';
     roomIdDisplay.textContent = tid;
@@ -576,7 +800,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       if (e.message === 'SECURE_CONTEXT_REQUIRED') {
         toast('Screen sharing requires HTTPS or localhost!', 'warn');
-        sysMsg('⚠️ Screen sharing is blocked in non-secure HTTP contexts. Please use HTTPS or localhost.');
+        sysMsg('⚠️ Screen sharing is blocked in non-secure HTTP contexts.');
       } else if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
         toast('Screen sharing cancelled', 'info');
       } else {
@@ -599,6 +823,10 @@ document.addEventListener('DOMContentLoaded', () => {
   fileIn.addEventListener('change', async e => {
     const f = e.target.files[0];
     if (!f) return;
+    loadVideoFile(f);
+  });
+
+  async function loadVideoFile(f) {
     const objectUrl = URL.createObjectURL(f);
     localVideo.src = objectUrl;
     localVideo.muted = false;
@@ -606,7 +834,7 @@ document.addEventListener('DOMContentLoaded', () => {
     localVideo.style.display = 'block';
     screenVideo.style.display = 'none';
     cardMainStream.style.display = 'flex';
-    mainStreamLabel.innerHTML = `<i data-lucide="file-video" style="width:13px;height:13px"></i> ${f.name}`;
+    mainStreamLabel.innerHTML = `<i data-lucide="file-video" style="width:13px;height:13px"></i> ${esc(f.name)}`;
     welcome.style.display = 'none';
     syncMode = true;
     seekBar.disabled = false;
@@ -630,7 +858,29 @@ document.addEventListener('DOMContentLoaded', () => {
       sysMsg(`🎬 Loaded: ${f.name}`);
       toast(`Loaded ${f.name}`, 'ok');
     }
-  });
+  }
+
+  // ─── Drag & Drop Video ───
+  if (screenEl && dropZoneOverlay) {
+    screenEl.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZoneOverlay.classList.add('active');
+    });
+    screenEl.addEventListener('dragleave', e => {
+      e.preventDefault();
+      dropZoneOverlay.classList.remove('active');
+    });
+    screenEl.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZoneOverlay.classList.remove('active');
+      const files = e.dataTransfer.files;
+      if (files.length > 0 && files[0].type.startsWith('video/')) {
+        loadVideoFile(files[0]);
+      } else {
+        toast('Please drop a video file', 'warn');
+      }
+    });
+  }
 
   localVideo.addEventListener('play', () => {
     playPauseBtn.innerHTML = `<i data-lucide="pause" style="width:18px;height:18px"></i>`;
@@ -658,6 +908,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const c = localVideo.currentTime, d = localVideo.duration || 1;
     seekBar.value = Math.round((c / d) * 1000);
     timeLabel.textContent = `${fmt(c)} / ${fmt(d)}`;
+    updateSubtitles(c);
   });
 
   seekBar.addEventListener('input', e => {
@@ -674,11 +925,37 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!syncMode) return;
     if (localVideo.paused) {
       localVideo.play();
-      rtc.send('SYNC', { a: 'play', t: localVideo.currentTime });
+      rtc.send('SYNC', { a: 'play', t: localVideo.currentTime, speed: localVideo.playbackRate });
     } else {
       localVideo.pause();
       rtc.send('SYNC', { a: 'pause', t: localVideo.currentTime });
     }
+  }
+
+  // ─── Skip Forward/Back ───
+  if (skipBackBtn) {
+    skipBackBtn.addEventListener('click', () => {
+      if (!syncMode) return;
+      localVideo.currentTime = Math.max(0, localVideo.currentTime - 10);
+      rtc.send('SYNC', { a: 'seek', t: localVideo.currentTime });
+    });
+  }
+  if (skipFwdBtn) {
+    skipFwdBtn.addEventListener('click', () => {
+      if (!syncMode || !localVideo.duration) return;
+      localVideo.currentTime = Math.min(localVideo.duration, localVideo.currentTime + 10);
+      rtc.send('SYNC', { a: 'seek', t: localVideo.currentTime });
+    });
+  }
+
+  // ─── Playback Speed ───
+  if (speedSelect) {
+    speedSelect.addEventListener('change', e => {
+      const speed = parseFloat(e.target.value);
+      localVideo.playbackRate = speed;
+      rtc.send('SYNC', { a: 'speed', speed });
+      toast(`Playback speed: ${speed}x`, 'info');
+    });
   }
 
   // ─── Volume ───
@@ -687,6 +964,7 @@ document.addEventListener('DOMContentLoaded', () => {
     screenVideo.volume = v;
     localVideo.volume = v;
     remoteCam.volume = v;
+    saveSettings();
   });
 
   volBtn.addEventListener('click', () => {
@@ -763,6 +1041,25 @@ document.addEventListener('DOMContentLoaded', () => {
     updateParticipantCards();
     toast(micOn ? 'Microphone unmuted' : 'Microphone muted', micOn ? 'info' : 'warn');
   });
+
+  // ─── Native PIP ───
+  if (nativePipBtn) {
+    nativePipBtn.addEventListener('click', async () => {
+      const video = screenVideo.style.display !== 'none' ? screenVideo : localVideo;
+      if (document.pictureInPictureElement) {
+        try { await document.exitPictureInPicture(); } catch (e) {}
+        nativePipBtn.classList.remove('active');
+      } else if (video && video.readyState >= 2) {
+        try {
+          await video.requestPictureInPicture();
+          nativePipBtn.classList.add('active');
+          toast('Picture-in-Picture active', 'ok');
+        } catch (e) {
+          toast('PIP not supported for this video', 'warn');
+        }
+      }
+    });
+  }
 
   // ─── PIP toggle ───
   pipToggle.addEventListener('click', e => {
@@ -846,7 +1143,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const timeLine = lines[timeLineIdx];
         const [startStr, endStr] = timeLine.split('-->');
         if (startStr && endStr) {
-          const text = lines.slice(timeLineIdx + 1).join('<br>').replace(/<(?!\/?(i|b|br)\b)[^>]+>/gi, '');
+          const text = lines.slice(timeLineIdx + 1).join('<br>').replace(/<(?!\/?(?:i|b|br)\b)[^>]+>/gi, '');
           if (text) {
             result.push({ start: timeToSec(startStr), end: timeToSec(endStr), text });
           }
@@ -945,12 +1242,10 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.height = 130;
     const ctx = canvas.getContext('2d');
 
-    // Simple robust visual QR matrix encoder fallback
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, 130, 130);
     ctx.fillStyle = '#000000';
 
-    // Draw QR outer frame markers
     const drawFinder = (x, y) => {
       ctx.fillRect(x, y, 35, 35);
       ctx.fillStyle = '#ffffff';
@@ -962,7 +1257,6 @@ document.addEventListener('DOMContentLoaded', () => {
     drawFinder(87, 8);
     drawFinder(8, 87);
 
-    // Draw pseudo hash data blocks
     let hash = 0;
     for (let i = 0; i < text.length; i++) hash = (hash << 5) - hash + text.charCodeAt(i);
     for (let r = 0; r < 11; r++) {
@@ -984,8 +1278,6 @@ document.addEventListener('DOMContentLoaded', () => {
     container.style.display = 'flex';
   }
 
-  // Update room creation to render QR code
-  const origCreateBtnHandler = createBtn.onclick;
   createBtn.addEventListener('click', () => {
     setTimeout(() => {
       if (roomId) {
@@ -995,20 +1287,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 200);
   });
 
-  // Update timeupdate for subtitle sync
-  localVideo.addEventListener('timeupdate', () => {
-    if (!syncMode) return;
-    const c = localVideo.currentTime, d = localVideo.duration || 1;
-    seekBar.value = Math.round((c / d) * 1000);
-    timeLabel.textContent = `${fmt(c)} / ${fmt(d)}`;
-    updateSubtitles(c);
-  });
-
   // ─── Noise Filter Controls ───
   noiseCheck.addEventListener('change', e => {
     rtc.dsp.toggle(e.target.checked);
     noiseBtn.classList.toggle('active', e.target.checked);
     noiseBtn.classList.toggle('off', !e.target.checked);
+    saveSettings();
   });
   noiseBtn.addEventListener('click', () => {
     noiseCheck.checked = !noiseCheck.checked;
@@ -1017,11 +1301,13 @@ document.addEventListener('DOMContentLoaded', () => {
   gateSlider.addEventListener('input', e => {
     gateVal.textContent = `${e.target.value} dB`;
     rtc.dsp.setThreshold(+e.target.value);
+    saveSettings();
   });
   gainSlider.addEventListener('input', e => {
     const v = e.target.value / 10;
     gainVal.textContent = `${v.toFixed(1)}x`;
     rtc.dsp.setGain(v);
+    saveSettings();
   });
 
   // ─── VU Meter & Speaking Halo Ring ───
@@ -1041,14 +1327,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   requestAnimationFrame(tickMeter);
 
-  // Initial call to set participant cards
   updateParticipantCards();
+  updateNicknameDisplay();
 
   // ─── Emojis & Soundboard FX ───
   document.querySelectorAll('.emoji-btn').forEach(b => {
     b.addEventListener('click', () => {
       const e = b.dataset.e;
-      spawnEmoji(e, 'You');
+      spawnEmoji(e, nickname || 'You');
       rtc.send('EMOJI', { e });
       b.classList.add('pop');
       setTimeout(() => b.classList.remove('pop'), 350);
@@ -1079,21 +1365,87 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ─── Chat ───
+  // ─── Chat with Typing Indicators & Link Detection ───
+  let chatTypingTimer = null;
+
+  chatIn.addEventListener('input', () => {
+    if (!isTyping) {
+      isTyping = true;
+      rtc.send('TYPING', { typing: true });
+    }
+    clearTimeout(chatTypingTimer);
+    chatTypingTimer = setTimeout(() => {
+      isTyping = false;
+      rtc.send('TYPING', { typing: false });
+    }, 2000);
+  });
+
   chatForm.addEventListener('submit', e => {
     e.preventDefault();
     const t = chatIn.value.trim();
     if (!t) return;
-    addMsg('You', t, true);
-    rtc.send('CHAT', { t });
+    addMsg(nickname || 'You', t, true);
+    rtc.send('CHAT', { t, nickname });
     chatIn.value = '';
+    isTyping = false;
+    rtc.send('TYPING', { typing: false });
   });
+
+  // Chat image paste support
+  chatIn.addEventListener('paste', e => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const blob = item.getAsFile();
+        const reader = new FileReader();
+        reader.onload = evt => {
+          const imgData = evt.target.result;
+          addImgMsg(nickname || 'You', imgData, true);
+          rtc.send('CHAT_IMG', { img: imgData, nickname });
+        };
+        reader.readAsDataURL(blob);
+        return;
+      }
+    }
+  });
+
+  function linkify(text) {
+    const urlRegex = /(https?:\/\/[^\s<]+)/gi;
+    return text.replace(urlRegex, url => `<a href="${url}" target="_blank" rel="noopener">${url}</a>`);
+  }
+
+  function relativeTime() {
+    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
 
   function addMsg(who, text, me = false) {
     const d = document.createElement('div');
     d.className = `chat-msg ${me ? 'me' : 'them'}`;
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    d.innerHTML = `<div class="chat-who">${esc(who)} <span class="chat-t">${time}</span></div>${esc(text)}`;
+    const time = relativeTime();
+    d.innerHTML = `<div class="chat-who">${esc(who)} <span class="chat-t">${time}</span></div>${linkify(esc(text))}`;
+    chatLog.appendChild(d);
+    chatLog.scrollTop = chatLog.scrollHeight;
+
+    // Increment unread if chat panel not active
+    if (!me) {
+      const chatTab = document.querySelector('[data-panel="chatPanel"]');
+      if (chatTab && !chatTab.classList.contains('active')) {
+        unreadCount++;
+        if (chatUnreadBadge) {
+          chatUnreadBadge.textContent = unreadCount;
+          chatUnreadBadge.style.display = 'flex';
+        }
+      }
+    }
+  }
+
+  function addImgMsg(who, imgSrc, me = false) {
+    const d = document.createElement('div');
+    d.className = `chat-msg ${me ? 'me' : 'them'}`;
+    const time = relativeTime();
+    d.innerHTML = `<div class="chat-who">${esc(who)} <span class="chat-t">${time}</span></div><img class="chat-img" src="${imgSrc}" alt="Shared image">`;
     chatLog.appendChild(d);
     chatLog.scrollTop = chatLog.scrollHeight;
   }
@@ -1111,14 +1463,25 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!d || typeof d !== 'object' || !d.type) return;
     switch (d.type) {
       case 'SYNC':
-        if (syncMode && d.payload) {
-          if (d.payload.a === 'play') { localVideo.currentTime = d.payload.t; localVideo.play().catch(()=>{}); }
-          else if (d.payload.a === 'pause') { localVideo.currentTime = d.payload.t; localVideo.pause(); }
-          else if (d.payload.a === 'seek') { localVideo.currentTime = d.payload.t; }
+        if (d.payload) {
+          if (syncMode) {
+            if (d.payload.a === 'play') {
+              localVideo.currentTime = d.payload.t;
+              if (d.payload.speed) localVideo.playbackRate = d.payload.speed;
+              localVideo.play().catch(()=>{});
+            }
+            else if (d.payload.a === 'pause') { localVideo.currentTime = d.payload.t; localVideo.pause(); }
+            else if (d.payload.a === 'seek') { localVideo.currentTime = d.payload.t; }
+            else if (d.payload.a === 'speed') {
+              localVideo.playbackRate = d.payload.speed;
+              if (speedSelect) speedSelect.value = d.payload.speed;
+              toast(`Playback speed: ${d.payload.speed}x`, 'info');
+            }
+          }
         }
         break;
       case 'EMOJI':
-        if (d.payload?.e) spawnEmoji(d.payload.e, 'Partner');
+        if (d.payload?.e) spawnEmoji(d.payload.e, partnerNickname);
         break;
       case 'SOUND_FX':
         if (d.payload?.fx) {
@@ -1128,13 +1491,13 @@ document.addEventListener('DOMContentLoaded', () => {
             braam: '🎺 Inception BRAAM', dunkirkClock: '⏱️ Dunkirk Tick', cosmicDrone: '🌌 Cosmic Drone', trailerImpact: '💥 Trailer Boom',
             sciFiLaser: '🔫 Laser Pew', horrorSting: '😱 Horror Sting'
           };
-          toast(`Partner played ${fxLabels[d.payload.fx] || d.payload.fx}!`, 'info');
+          toast(`${partnerNickname} played ${fxLabels[d.payload.fx] || d.payload.fx}!`, 'info');
         }
         break;
       case 'SUBTITLE_SYNC':
         if (d.payload?.subtitles) {
           subtitles = d.payload.subtitles;
-          toast(`Received ${subtitles.length} subtitles from partner!`, 'info');
+          toast(`Received ${subtitles.length} subtitles from ${partnerNickname}!`, 'info');
         }
         break;
       case 'FILTER_SYNC':
@@ -1146,8 +1509,53 @@ document.addEventListener('DOMContentLoaded', () => {
         break;
       case 'CHAT':
         if (d.payload?.t) {
-          addMsg('Partner', d.payload.t, false);
+          addMsg(d.payload.nickname || partnerNickname, d.payload.t, false);
           ping();
+          showNotification(`${d.payload.nickname || partnerNickname}`, d.payload.t);
+          if (!tabFocused) flashTitle(`💬 ${d.payload.nickname || partnerNickname}: ${d.payload.t.substring(0, 30)}`);
+        }
+        break;
+      case 'CHAT_IMG':
+        if (d.payload?.img) {
+          addImgMsg(d.payload.nickname || partnerNickname, d.payload.img, false);
+          ping();
+          showNotification(`${d.payload.nickname || partnerNickname}`, '📷 Sent an image');
+        }
+        break;
+      case 'TYPING':
+        if (typingIndicator) {
+          if (d.payload?.typing) {
+            typingIndicator.style.display = 'flex';
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+              typingIndicator.style.display = 'none';
+            }, 3000);
+          } else {
+            typingIndicator.style.display = 'none';
+          }
+        }
+        break;
+      case 'IDENTITY':
+        if (d.payload?.nickname) {
+          updatePartnerNicknameDisplay(d.payload.nickname);
+          sysMsg(`${d.payload.nickname} has joined the room!`);
+        }
+        break;
+      case 'PRESENCE':
+        if (d.payload?.status) {
+          updatePresenceUI(d.payload.status);
+          if (d.payload.nickname && d.payload.nickname !== partnerNickname) {
+            updatePartnerNicknameDisplay(d.payload.nickname);
+          }
+        }
+        break;
+      case 'PASSWORD_CHECK':
+        if (d.payload?.password && roomPassword) {
+          const valid = d.payload.password === roomPassword;
+          rtc.send('PASSWORD_RESULT', { valid });
+          if (!valid) {
+            toast(`${partnerNickname} entered wrong password`, 'warn');
+          }
         }
         break;
     }
@@ -1178,6 +1586,17 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.toggle('theater');
   });
 
+  // ─── Shortcuts Modal ───
+  if (shortcutsBtn) {
+    shortcutsBtn.addEventListener('click', () => shortcutsModal?.classList.add('open'));
+  }
+  if (closeShortcutsBtn) {
+    closeShortcutsBtn.addEventListener('click', () => shortcutsModal?.classList.remove('open'));
+  }
+  if (shortcutsModal) {
+    shortcutsModal.addEventListener('click', e => { if (e.target === shortcutsModal) shortcutsModal.classList.remove('open'); });
+  }
+
   // ─── Keyboard Shortcuts ───
   document.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -1188,7 +1607,48 @@ document.addEventListener('DOMContentLoaded', () => {
       case 't': theaterBtn.click(); break;
       case 'c': camBtn.click(); break;
       case 'g': setViewMode(currentViewMode === 'grid' ? 'stage' : 'grid'); break;
-      case 'escape': roomModal.classList.remove('open'); break;
+      case 'p':
+        if (nativePipBtn) nativePipBtn.click();
+        break;
+      case '?':
+        if (shortcutsModal) shortcutsModal.classList.toggle('open');
+        break;
+      case 'arrowleft':
+        if (syncMode) {
+          localVideo.currentTime = Math.max(0, localVideo.currentTime - 10);
+          rtc.send('SYNC', { a: 'seek', t: localVideo.currentTime });
+          toast('Skipped back 10s', 'info');
+        }
+        break;
+      case 'arrowright':
+        if (syncMode && localVideo.duration) {
+          localVideo.currentTime = Math.min(localVideo.duration, localVideo.currentTime + 10);
+          rtc.send('SYNC', { a: 'seek', t: localVideo.currentTime });
+          toast('Skipped forward 10s', 'info');
+        }
+        break;
+      case '[':
+        if (syncMode && speedSelect) {
+          const idx = speedSelect.selectedIndex;
+          if (idx > 0) {
+            speedSelect.selectedIndex = idx - 1;
+            speedSelect.dispatchEvent(new Event('change'));
+          }
+        }
+        break;
+      case ']':
+        if (syncMode && speedSelect) {
+          const idx = speedSelect.selectedIndex;
+          if (idx < speedSelect.options.length - 1) {
+            speedSelect.selectedIndex = idx + 1;
+            speedSelect.dispatchEvent(new Event('change'));
+          }
+        }
+        break;
+      case 'escape':
+        roomModal.classList.remove('open');
+        if (shortcutsModal) shortcutsModal.classList.remove('open');
+        break;
     }
   });
 
