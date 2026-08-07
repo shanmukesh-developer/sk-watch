@@ -33,7 +33,8 @@ export class RTC {
         { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun3.l.google.com:19302' },
         { urls: 'stun:stun4.l.google.com:19302' },
-        { urls: 'stun:global.stun.twilio.com:3478' }
+        { urls: 'stun:global.stun.twilio.com:3478' },
+        { urls: 'stun:stun.cloudflare.com:3478' }
       ];
 
       // Self-hosted PeerServer options (/peerjs path)
@@ -48,19 +49,7 @@ export class RTC {
         selfHostedOpts.port = parseInt(portStr, 10);
       }
 
-      // Self-hosted PeerServer options (root path fallback)
-      const selfHostedRootOpts = {
-        host: host,
-        path: '/',
-        secure: isHttps,
-        debug: 0,
-        config: { iceServers }
-      };
-      if (portStr && portStr !== '80' && portStr !== '443') {
-        selfHostedRootOpts.port = parseInt(portStr, 10);
-      }
-
-      // Public PeerJS Cloud options
+      // Public PeerJS Cloud fallback options
       const cloudOpts = {
         host: '0.peerjs.com',
         port: 443,
@@ -71,11 +60,8 @@ export class RTC {
       };
 
       const attempts = [
-        { opts: selfHostedOpts, id: customId, name: 'Self-Hosted /peerjs (Custom ID)' },
-        { opts: selfHostedOpts, id: null, name: 'Self-Hosted /peerjs (Auto ID)' },
-        { opts: selfHostedRootOpts, id: customId, name: 'Self-Hosted Root (Custom ID)' },
-        { opts: cloudOpts, id: customId, name: 'PeerJS Cloud (Custom ID)' },
-        { opts: cloudOpts, id: null, name: 'PeerJS Cloud (Auto ID)' }
+        { opts: selfHostedOpts, id: customId, name: 'Self-Hosted /peerjs' },
+        { opts: cloudOpts, id: customId, name: 'PeerJS Cloud Fallback' }
       ];
 
       let currentAttemptIndex = 0;
@@ -114,7 +100,7 @@ export class RTC {
           this.peer.on('error', e => {
             console.warn(`[RTC Signaling Warning] ${config.name} error:`, e.type, e.message);
             if (e.type === 'peer-unavailable') {
-              this.cb.onStatus('error', 'Room ID not found');
+              this.cb.onStatus('error', 'Room ID not found or host is offline');
               return;
             }
             if (!resolved) {
@@ -139,15 +125,57 @@ export class RTC {
   }
 
   connect(targetId) {
-    if (!this.peer) return;
+    if (!targetId) return;
+
+    if (!this.peer) {
+      console.warn('[RTC Connect] Peer instance not initialized');
+      this.cb.onStatus('error', 'Signaling server not ready');
+      return;
+    }
+
+    if (this.peer.destroyed) {
+      console.warn('[RTC Connect] Peer instance destroyed');
+      this.cb.onStatus('error', 'Signaling lost. Refresh page.');
+      return;
+    }
+
+    if (!this.peer.open) {
+      console.log('[RTC Connect] Peer connection pending open... Queuing join to:', targetId);
+      this.cb.onStatus('connecting');
+      this.peer.once('open', () => this.connect(targetId));
+      return;
+    }
+
+    console.log(`[RTC Connect] Initiating WebRTC data connection to room host: ${targetId}...`);
     this.cb.onStatus('connecting');
-    const c = this.peer.connect(targetId, { reliable: true });
-    this._handleConn(c);
+
+    try {
+      if (this.conn) {
+        try { this.conn.close(); } catch (e) {}
+      }
+      const c = this.peer.connect(targetId, { reliable: true, serialization: 'json' });
+      this._handleConn(c, targetId);
+    } catch (err) {
+      console.error('[RTC Connect Error]', err);
+      this.cb.onStatus('error', `Could not connect to room: ${err.message}`);
+    }
   }
 
-  _handleConn(c) {
+  _handleConn(c, targetId) {
     this.conn = c;
+
+    // Timeout safety net: If connection stays stuck connecting for 15 seconds
+    const connTimeout = setTimeout(() => {
+      if (c && !c.open) {
+        console.warn('[RTC DataConnection Timeout] Connection attempt timed out');
+        this.cb.onStatus('error', `Connection timed out to ${targetId || c.peer}. Host may be offline.`);
+        try { c.close(); } catch (e) {}
+      }
+    }, 15000);
+
     c.on('open', () => {
+      clearTimeout(connTimeout);
+      console.log('[RTC DataConnection Open] Connected to peer:', c.peer);
       this.cb.onConnect(c.peer);
       this.cb.onStatus('connected');
 
@@ -163,12 +191,15 @@ export class RTC {
     c.on('data', d => this.cb.onData(d));
 
     c.on('close', () => {
+      clearTimeout(connTimeout);
       this.cb.onDisconnect();
       this.cb.onStatus('disconnected');
     });
 
     c.on('error', err => {
+      clearTimeout(connTimeout);
       console.error('[Data Connection Error]', err);
+      this.cb.onStatus('error', `Room join error: ${err.type || err.message || 'Peer connection failed'}`);
     });
   }
 

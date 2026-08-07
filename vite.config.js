@@ -6,6 +6,17 @@ export default defineConfig({
     emptyOutDir: true
   },
   server: {
-    host: true
+    host: true,
+    proxy: {
+      '/peerjs': {
+        target: 'http://localhost:3000',
+        ws: true,
+        changeOrigin: true
+      },
+      '/ping': {
+        target: 'http://localhost:3000',
+        changeOrigin: true
+      }
+    }
   }
 });

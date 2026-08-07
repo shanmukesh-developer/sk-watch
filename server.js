@@ -16,7 +16,8 @@ const server = http.createServer(app);
 // Integrated PeerJS Signaling Engine on /peerjs endpoint
 const peerServer = ExpressPeerServer(server, {
   debug: true,
-  path: '/'
+  allow_discovery: true,
+  proxied: true
 });
 
 app.use('/peerjs', peerServer);

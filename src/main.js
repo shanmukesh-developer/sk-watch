@@ -384,10 +384,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ─── RTC Setup ───
   const rtc = new RTC({
-    onStatus: (s) => {
+    onStatus: (s, detail) => {
       statusDot.className = 'dot' + (s === 'connected' || s === 'ready' ? ' on' : '');
       const labels = { ready: 'Ready', connecting: 'Connecting...', connected: 'Connected', disconnected: 'Offline', error: 'Error' };
       statusText.textContent = labels[s] || s;
+
+      if (s === 'error') {
+        toast(detail || 'Connection failed', 'warn');
+        sysMsg(`⚠️ Signaling / Room Status: ${detail || 'Error'}`);
+      } else if (s === 'connected') {
+        toast('Connected to room partner!', 'ok');
+      } else if (s === 'connecting') {
+        sysMsg('🔄 Connecting to peer...');
+      }
     },
     onConnect: (pid) => {
       sysMsg('🎉 Partner connected!');
