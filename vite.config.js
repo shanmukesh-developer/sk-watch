@@ -13,6 +13,11 @@ export default defineConfig({
         ws: true,
         changeOrigin: true
       },
+      '/socket.io': {
+        target: 'http://localhost:3000',
+        ws: true,
+        changeOrigin: true
+      },
       '/ping': {
         target: 'http://localhost:3000',
         changeOrigin: true

@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 
 const server = http.createServer(app);
 
-// ─── Integrated PeerJS Signaling Engine (for WebRTC media streams only) ───
+// ─── Integrated PeerJS Signaling Engine (for WebRTC media streams) ───
 const peerServer = ExpressPeerServer(server, {
   debug: true,
   allow_discovery: true,
@@ -23,7 +23,7 @@ const peerServer = ExpressPeerServer(server, {
 
 app.use('/peerjs', peerServer);
 
-// ─── Socket.IO Room Relay Server (for guaranteed data delivery across networks) ───
+// ─── Socket.IO Room Relay Server (guaranteed data delivery across ALL networks) ───
 const io = new Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
   pingInterval: 10000,
@@ -31,21 +31,30 @@ const io = new Server(server, {
   transports: ['websocket', 'polling']
 });
 
-// Track active rooms and their members
-const rooms = new Map(); // roomId -> Set<socketId>
+// Track active rooms: roomId -> Map<socketId, { peerId, nickname }>
+const rooms = new Map();
 
 io.on('connection', (socket) => {
   console.log(`[Socket.IO] Client connected: ${socket.id}`);
   let currentRoom = null;
 
-  // Join a room (host creates, partner joins)
-  socket.on('join-room', (roomId, nickname) => {
+  // Join a room — both host and joiner use this
+  // peerId = PeerJS peer ID (for WebRTC media calls)
+  socket.on('join-room', ({ roomId, peerId, nickname }) => {
+    // Leave previous room if any
     if (currentRoom) {
       socket.leave(currentRoom);
       const members = rooms.get(currentRoom);
       if (members) {
         members.delete(socket.id);
         if (members.size === 0) rooms.delete(currentRoom);
+        else {
+          socket.to(currentRoom).emit('peer-left', {
+            socketId: socket.id,
+            peerId,
+            memberCount: members.size
+          });
+        }
       }
     }
 
@@ -53,25 +62,35 @@ io.on('connection', (socket) => {
     socket.join(roomId);
 
     if (!rooms.has(roomId)) {
-      rooms.set(roomId, new Set());
+      rooms.set(roomId, new Map());
     }
-    rooms.get(roomId).add(socket.id);
+    rooms.get(roomId).set(socket.id, { peerId: peerId || '', nickname: nickname || '' });
 
     const memberCount = rooms.get(roomId).size;
-    console.log(`[Socket.IO] ${nickname || socket.id} joined room ${roomId} (${memberCount} members)`);
+    console.log(`[Socket.IO] ${nickname || socket.id} (peer:${peerId}) joined room ${roomId} (${memberCount} members)`);
 
-    // Notify other room members that someone joined
+    // Collect all existing members' PeerJS IDs (for the joiner to know who's already in the room)
+    const existingMembers = [];
+    rooms.get(roomId).forEach((info, sid) => {
+      if (sid !== socket.id) {
+        existingMembers.push({ socketId: sid, peerId: info.peerId, nickname: info.nickname });
+      }
+    });
+
+    // Notify OTHER room members that someone joined
     socket.to(roomId).emit('peer-joined', {
       socketId: socket.id,
+      peerId: peerId || '',
       nickname: nickname || '',
       memberCount
     });
 
-    // Confirm join to the sender with member count
+    // Confirm join to THIS socket — include existing members list
     socket.emit('room-joined', {
       roomId,
       memberCount,
-      isHost: memberCount === 1
+      isHost: memberCount === 1,
+      existingMembers
     });
   });
 
@@ -82,29 +101,21 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Check if a room exists and has members (for "is host online?" check)
-  socket.on('check-room', (roomId, callback) => {
-    const members = rooms.get(roomId);
-    const exists = members && members.size > 0;
-    if (typeof callback === 'function') {
-      callback({ exists, memberCount: members ? members.size : 0 });
-    }
-  });
-
   // Handle disconnect
   socket.on('disconnect', (reason) => {
     console.log(`[Socket.IO] Client disconnected: ${socket.id} (${reason})`);
     if (currentRoom) {
       const members = rooms.get(currentRoom);
       if (members) {
+        const memberInfo = members.get(socket.id);
         members.delete(socket.id);
         const remaining = members.size;
         if (remaining === 0) {
           rooms.delete(currentRoom);
         } else {
-          // Notify remaining room members
           socket.to(currentRoom).emit('peer-left', {
             socketId: socket.id,
+            peerId: memberInfo?.peerId || '',
             memberCount: remaining
           });
         }
@@ -116,7 +127,7 @@ io.on('connection', (socket) => {
 // Serve Vite build output
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// Health check endpoint for keep-alive ping
+// Health check endpoint
 app.get('/ping', (req, res) => {
   res.status(200).send('pong');
 });
@@ -131,17 +142,17 @@ server.listen(PORT, () => {
   console.log(`  PeerJS Signaling: /peerjs`);
   console.log(`  Socket.IO Relay:  active`);
 
-  // Self-ping loop every 13 minutes so Render never sleeps
+  // Self-ping every 13 min so Render never sleeps
   const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
   if (RENDER_URL) {
-    console.log(`Auto-ping enabled for Render URL: ${RENDER_URL}`);
+    console.log(`Auto-ping enabled: ${RENDER_URL}`);
     setInterval(() => {
       const client = RENDER_URL.startsWith('https') ? https : http;
       client.get(`${RENDER_URL}/ping`, (res) => {
-        console.log(`[Auto-Ping] Render keep-alive success (${res.statusCode})`);
+        console.log(`[Auto-Ping] keep-alive (${res.statusCode})`);
       }).on('error', (err) => {
-        console.error('[Auto-Ping] Keep-alive error:', err.message);
+        console.error('[Auto-Ping] error:', err.message);
       });
-    }, 13 * 60 * 1000); // 13 minutes (Render sleeps after 15m)
+    }, 13 * 60 * 1000);
   }
 });
