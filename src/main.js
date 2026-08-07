@@ -6,79 +6,131 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const sfx = new SoundFXEngine();
 
-  // ─── Authentic Marvel Studios High-Speed Flipbook Engine ───
+  // ─── Authentic Marvel Studios Stencil Letter-Mask Engine ───
   const marvelIntro = document.getElementById('marvelIntro');
   const enterTheaterBtn = document.getElementById('enterTheaterBtn');
-  const flipbookCanvas = document.getElementById('flipbookCanvas');
+  const maskedTextCanvas = document.getElementById('maskedTextCanvas');
 
-  if (flipbookCanvas) {
-    const ctx = flipbookCanvas.getContext('2d');
-    let width = flipbookCanvas.width = window.innerWidth;
-    let height = flipbookCanvas.height = window.innerHeight;
+  if (maskedTextCanvas) {
+    const maskedCtx = maskedTextCanvas.getContext('2d');
+
+    // Create offscreen flipbook canvas
+    const flipCanvas = document.createElement('canvas');
+    flipCanvas.width = 1100;
+    flipCanvas.height = 240;
+    const flipCtx = flipCanvas.getContext('2d');
     let frameIndex = 0;
 
-    // Vibrant comic book panel color schemes
-    const panelColors = [
-      ['#e62429', '#151515', '#ffd700'],
-      ['#00d4ff', '#1a1e2e', '#f43f5e'],
-      ['#a855f7', '#0f172a', '#22c55e'],
-      ['#f59e0b', '#262626', '#ffffff'],
-      ['#e11d48', '#020617', '#38bdf8']
+    const panelThemes = [
+      ['#ffffff', '#e62429', '#ffd700', '#0a0a0d'],
+      ['#ffffff', '#00d4ff', '#f43f5e', '#151515'],
+      ['#ffffff', '#a855f7', '#22c55e', '#1e1b4b'],
+      ['#ffffff', '#f59e0b', '#38bdf8', '#262626'],
+      ['#ffffff', '#e11d48', '#fbbf24', '#020617']
     ];
 
-    function drawMarvelFlipbook() {
-      ctx.clearRect(0, 0, width, height);
+    function getAutoFontSize(ctx, text, targetWidth) {
+      let fontSize = 84;
+      ctx.font = `900 ${fontSize}px "Impact", "Arial Black", sans-serif`;
+      let textWidth = ctx.measureText(text).width;
+      while (textWidth > targetWidth && fontSize > 20) {
+        fontSize -= 2;
+        ctx.font = `900 ${fontSize}px "Impact", "Arial Black", sans-serif`;
+        textWidth = ctx.measureText(text).width;
+      }
+      return fontSize;
+    }
+
+    function renderMarvelStencilFrame() {
       frameIndex++;
+      const w = flipCanvas.width;
+      const h = flipCanvas.height;
 
-      const theme = panelColors[frameIndex % panelColors.length];
+      // 1. Render vibrant high-contrast comic panels onto flipCanvas
+      flipCtx.clearRect(0, 0, w, h);
+      const theme = panelThemes[frameIndex % panelThemes.length];
 
-      // Dynamic comic book panel grid
-      ctx.fillStyle = theme[1];
-      ctx.fillRect(0, 0, width, height);
+      // Base background
+      flipCtx.fillStyle = theme[3];
+      flipCtx.fillRect(0, 0, w, h);
 
-      // Slanted comic action panels
-      ctx.fillStyle = theme[0];
-      ctx.beginPath();
-      ctx.moveTo(width * 0.2 + (frameIndex * 15) % 200, 0);
-      ctx.lineTo(width * 0.6 + (frameIndex * 10) % 200, 0);
-      ctx.lineTo(width * 0.4 - (frameIndex * 12) % 200, height);
-      ctx.lineTo(width * 0.1 - (frameIndex * 8) % 200, height);
-      ctx.closePath();
-      ctx.fill();
+      // Bright comic action splotches & slashes
+      const bandOffset = (frameIndex * 40) % w;
+      flipCtx.fillStyle = theme[0];
+      flipCtx.beginPath();
+      flipCtx.moveTo(bandOffset - 200, 0);
+      flipCtx.lineTo(bandOffset + 220, 0);
+      flipCtx.lineTo(bandOffset + 80, h);
+      flipCtx.lineTo(bandOffset - 340, h);
+      flipCtx.closePath();
+      flipCtx.fill();
 
-      // Halftone comic dots overlay
-      ctx.fillStyle = theme[2];
-      const step = 25;
-      const offset = (frameIndex * 5) % step;
-      for (let x = offset; x < width; x += step) {
-        for (let y = offset; y < height; y += step) {
-          ctx.beginPath();
-          ctx.arc(x, y, 3.5, 0, Math.PI * 2);
-          ctx.fill();
+      // Golden highlight band
+      flipCtx.fillStyle = theme[2];
+      flipCtx.beginPath();
+      flipCtx.moveTo(bandOffset + 350, 0);
+      flipCtx.lineTo(bandOffset + 550, 0);
+      flipCtx.lineTo(bandOffset + 410, h);
+      flipCtx.lineTo(bandOffset + 210, h);
+      flipCtx.closePath();
+      flipCtx.fill();
+
+      // Crimson action block
+      flipCtx.fillStyle = theme[1];
+      flipCtx.beginPath();
+      flipCtx.moveTo(bandOffset - 500, 0);
+      flipCtx.lineTo(bandOffset - 320, 0);
+      flipCtx.lineTo(bandOffset - 420, h);
+      flipCtx.lineTo(bandOffset - 600, h);
+      flipCtx.closePath();
+      flipCtx.fill();
+
+      // Comic halftone dots grid
+      flipCtx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+      const step = 18;
+      const dotOffset = (frameIndex * 6) % step;
+      for (let x = dotOffset; x < w; x += step) {
+        for (let y = dotOffset; y < h; y += step) {
+          flipCtx.beginPath();
+          flipCtx.arc(x, y, 3, 0, Math.PI * 2);
+          flipCtx.fill();
         }
       }
 
-      // Fast action lines
-      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-      ctx.lineWidth = 4;
+      // Dynamic action speed lines
+      flipCtx.strokeStyle = '#ffffff';
+      flipCtx.lineWidth = 4;
       for (let i = 0; i < 8; i++) {
-        const lx = Math.random() * width;
-        ctx.beginPath();
-        ctx.moveTo(lx, 0);
-        ctx.lineTo(lx + (Math.random() - 0.5) * 300, height);
-        ctx.stroke();
+        const lx = Math.random() * w;
+        flipCtx.beginPath();
+        flipCtx.moveTo(lx, 0);
+        flipCtx.lineTo(lx + (Math.random() - 0.5) * 200, h);
+        flipCtx.stroke();
       }
+
+      // 2. Render onto maskedTextCanvas with 'destination-in' text stencil
+      maskedCtx.save();
+      maskedCtx.clearRect(0, 0, w, h);
+
+      // Copy flipping comic frame onto target canvas
+      maskedCtx.drawImage(flipCanvas, 0, 0);
+
+      // Stencil mask: Keep comic frame ONLY inside the letters of SHANMUKH & KAVYA!
+      maskedCtx.globalCompositeOperation = 'destination-in';
+      maskedCtx.fillStyle = '#ffffff';
+      const text = 'SHANMUKH & KAVYA';
+      const bestFontSize = getAutoFontSize(maskedCtx, text, w - 80);
+      maskedCtx.font = `900 ${bestFontSize}px "Impact", "Arial Black", sans-serif`;
+      maskedCtx.textAlign = 'center';
+      maskedCtx.textBaseline = 'middle';
+      maskedCtx.fillText(text, w / 2, h / 2 + 4);
+      maskedCtx.restore();
 
       if (marvelIntro && !marvelIntro.classList.contains('hidden')) {
-        setTimeout(() => requestAnimationFrame(drawMarvelFlipbook), 45); // High speed 22fps flipbook
+        setTimeout(() => requestAnimationFrame(renderMarvelStencilFrame), 42); // 24fps
       }
     }
-    drawMarvelFlipbook();
-
-    window.addEventListener('resize', () => {
-      width = flipbookCanvas.width = window.innerWidth;
-      height = flipbookCanvas.height = window.innerHeight;
-    });
+    renderMarvelStencilFrame();
   }
 
   // Marvel Studio Fanfare & Drumbeat
