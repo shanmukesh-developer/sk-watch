@@ -118,18 +118,26 @@ body.theater .app{padding:4px;gap:4px}
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
-/* 2. Spotlight / Stage View (Main Stream Large, Participants in Strip) */
+/* 2. Spotlight / Stage View (Main Stream Large + Right Participant Cards) */
 .screen.zoom-stage-view .video-stage{
-  grid-template-columns: 1fr 240px;
-  grid-template-rows: 1fr;
+  grid-template-columns: 1fr 220px;
+  grid-template-rows: repeat(2, 1fr);
+  gap: 10px;
 }
 .screen.zoom-stage-view .card-main-stream{
   grid-column: 1 / 2;
+  grid-row: 1 / 3;
   height: 100%;
 }
-.screen.zoom-stage-view .video-stage > .card-participant{
+.screen.zoom-stage-view #cardLocal{
   grid-column: 2 / 3;
-  height: 180px;
+  grid-row: 1 / 2;
+  height: 100%;
+}
+.screen.zoom-stage-view #cardRemote{
+  grid-column: 2 / 3;
+  grid-row: 2 / 3;
+  height: 100%;
 }
 
 /* 3. PIP View Mode */

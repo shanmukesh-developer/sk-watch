@@ -1,5 +1,5 @@
 /**
- * Web Audio DSP — Noise gate, highpass filter, gain control, level meter.
+ * Web Audio DSP — Smooth vocal clarity, noise filter, gain control, level meter.
  */
 export class AudioDSP {
   constructor() {
@@ -11,7 +11,7 @@ export class AudioDSP {
     this.analyser = null;
     this.dest = null;
     this.enabled = true;
-    this.threshold = -45;
+    this.threshold = -30;
     this.gainVal = 1.0;
   }
 
@@ -29,7 +29,8 @@ export class AudioDSP {
     this.cleanup();
 
     if (!this.ctx) {
-      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AudioCtx({ sampleRate: 48000, latencyHint: 'interactive' });
     }
     if (this.ctx.state === 'suspended') {
       await this.ctx.resume().catch(() => {});
@@ -37,46 +38,48 @@ export class AudioDSP {
 
     this.source = this.ctx.createMediaStreamSource(rawStream);
 
-    // Highpass — kill room hum below 85Hz
+    // Highpass filter — removes sub-bass room rumble without cutting speech
     this.hp = this.ctx.createBiquadFilter();
     this.hp.type = 'highpass';
-    this.hp.frequency.value = this.enabled ? 85 : 10;
+    this.hp.frequency.value = this.enabled ? 65 : 10;
 
-    // Compressor — acts as noise gate
+    // Dynamics compressor — smooth broadcast vocal leveling (no aggressive gating!)
     this.comp = this.ctx.createDynamicsCompressor();
-    this.comp.threshold.value = this.enabled ? this.threshold : -100;
-    this.comp.knee.value = 12;
-    this.comp.ratio.value = 8;
-    this.comp.attack.value = 0.003;
-    this.comp.release.value = 0.25;
+    this.comp.threshold.value = this.enabled ? this.threshold : 0;
+    this.comp.knee.value = 30;
+    this.comp.ratio.value = this.enabled ? 2.5 : 1;
+    this.comp.attack.value = 0.02; // 20ms attack for natural transients
+    this.comp.release.value = 0.15; // 150ms release
 
-    // Gain
+    // Gain node
     this.gain = this.ctx.createGain();
     this.gain.gain.value = this.gainVal;
 
     // Analyser for VU meter
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 256;
+    this.analyser.smoothingTimeConstant = 0.8;
 
-    // Output
+    // Output destination stream
     this.dest = this.ctx.createMediaStreamDestination();
 
-    // Connect chain
+    // Connect audio node chain
     this.source.connect(this.hp);
     this.hp.connect(this.comp);
     this.comp.connect(this.gain);
     this.gain.connect(this.analyser);
     this.analyser.connect(this.dest);
 
-    const processed = this.dest.stream.getAudioTracks()[0];
-    return new MediaStream([processed, ...rawStream.getVideoTracks()]);
+    const processedAudioTrack = this.dest.stream.getAudioTracks()[0];
+    return new MediaStream([processedAudioTrack, ...rawStream.getVideoTracks()]);
   }
 
   toggle(on) {
     this.enabled = on;
     if (this.hp && this.comp) {
-      this.hp.frequency.value = on ? 85 : 10;
-      this.comp.threshold.value = on ? this.threshold : -100;
+      this.hp.frequency.value = on ? 65 : 10;
+      this.comp.threshold.value = on ? this.threshold : 0;
+      this.comp.ratio.value = on ? 2.5 : 1;
     }
   }
 

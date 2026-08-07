@@ -155,8 +155,8 @@ export class RTC {
       if (this.screenStream) {
         this._call(c.peer, this.screenStream, 'screen');
       }
-      if (this.rawCamStream) {
-        this._call(c.peer, this.rawCamStream, 'cam');
+      if (this.camStream || this.rawCamStream) {
+        this._call(c.peer, this.camStream || this.rawCamStream, 'cam');
       }
     });
 
@@ -174,7 +174,7 @@ export class RTC {
 
   _handleCall(call) {
     const type = call.metadata?.type || 'screen';
-    const answerStream = type === 'cam' ? this.rawCamStream : this.screenStream;
+    const answerStream = type === 'cam' ? (this.camStream || this.rawCamStream) : this.screenStream;
 
     call.answer(answerStream || undefined);
     if (type === 'screen') this.screenCall = call;
@@ -247,7 +247,7 @@ export class RTC {
           } else if (sender.track && sender.track.kind === 'audio') {
             const params = sender.getParameters() || {};
             if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
-            params.encodings[0].maxBitrate = 510000; // 510 kbps Studio Stereo
+            params.encodings[0].maxBitrate = 128000; // 128 kbps optimal voice & music encoding
             sender.setParameters(params).catch(() => {});
           }
         });
@@ -344,9 +344,9 @@ export class RTC {
     }
 
     if (this.conn?.open) {
-      this._call(this.conn.peer, raw, 'cam');
+      this._call(this.conn.peer, this.camStream || raw, 'cam');
     }
-    return raw;
+    return this.camStream || raw;
   }
 
   stopCam() {
