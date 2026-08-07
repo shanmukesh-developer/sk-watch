@@ -8,11 +8,13 @@ export class AudioDSP {
     this.hp = null;
     this.comp = null;
     this.gain = null;
+    this.delay = null;
     this.analyser = null;
     this.dest = null;
     this.enabled = true;
     this.threshold = -30;
     this.gainVal = 1.0;
+    this.delaySec = 0;
   }
 
   cleanup() {
@@ -55,6 +57,10 @@ export class AudioDSP {
     this.gain = this.ctx.createGain();
     this.gain.gain.value = this.gainVal;
 
+    // Delay Node for audio lip-sync alignment
+    this.delay = this.ctx.createDelay(1.0);
+    this.delay.delayTime.value = this.delaySec;
+
     // Analyser for VU meter
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 256;
@@ -67,7 +73,8 @@ export class AudioDSP {
     this.source.connect(this.hp);
     this.hp.connect(this.comp);
     this.comp.connect(this.gain);
-    this.gain.connect(this.analyser);
+    this.gain.connect(this.delay);
+    this.delay.connect(this.analyser);
     this.analyser.connect(this.dest);
 
     const processedAudioTrack = this.dest.stream.getAudioTracks()[0];
@@ -91,6 +98,11 @@ export class AudioDSP {
   setGain(v) {
     this.gainVal = v;
     if (this.gain) this.gain.gain.value = v;
+  }
+
+  setDelay(ms) {
+    this.delaySec = Math.max(0, ms / 1000);
+    if (this.delay) this.delay.delayTime.value = this.delaySec;
   }
 
   getLevel() {

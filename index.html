@@ -80,6 +80,11 @@
 
       <!-- Zoom Meeting Video Screen Stage -->
       <div class="screen zoom-grid-view" id="screen">
+        <!-- OLED Dynamic Ambilight Background Canvas -->
+        <canvas id="ambilightCanvas" class="ambilight-canvas"></canvas>
+        
+        <!-- Authentic 35mm Celluloid Film Grain Overlay -->
+        <div id="filmGrainOverlay" class="film-grain-overlay"></div>
 
         <!-- Main Video Stage (Zoom Grid / Spotlight) -->
         <div class="video-stage" id="videoStage">
@@ -88,6 +93,10 @@
           <div class="video-card card-main-stream" id="cardMainStream" style="display:none">
             <video id="screenVideo" autoplay playsinline></video>
             <video id="localVideo" playsinline style="display:none"></video>
+            
+            <!-- Dynamic Subtitle Sync Display Overlay -->
+            <div id="subtitleContainer" class="subtitle-overlay"></div>
+
             <div class="card-overlay">
               <span class="participant-name" id="mainStreamLabel"><i data-lucide="monitor" style="width:13px;height:13px"></i> HD Theater Stream</span>
               <span class="stream-badge">1080p 60FPS</span>
@@ -163,6 +172,23 @@
           <button class="ctrl-btn" id="playPauseBtn" title="Play/Pause"><i data-lucide="play" style="width:18px;height:18px"></i></button>
           <span class="ctrl-time" id="timeLabel">--:-- / --:--</span>
           <input type="range" class="ctrl-seek" id="seekBar" value="0" min="0" max="1000" step="1">
+
+          <label class="ctrl-btn hide-mobile" for="subFileIn" title="Load Subtitles (.srt / .vtt)">
+            <i data-lucide="subtitles" style="width:16px;height:16px"></i>
+            <input type="file" id="subFileIn" accept=".srt,.vtt" hidden>
+          </label>
+
+          <select id="filterSelect" class="ctrl-select hide-mobile" title="Cinematic Color Grading">
+            <option value="none">🎬 Film Normal</option>
+            <option value="inception">🪐 Inception Warm</option>
+            <option value="oppenheimer">📽️ Oppenheimer B&W</option>
+            <option value="interstellar">🌌 Interstellar Blue</option>
+            <option value="tenet">⏳ Tenet Inverted</option>
+          </select>
+
+          <button class="ctrl-btn hide-mobile" id="aspectBtn" title="Aspect Ratio (IMAX / Anamorphic)"><i data-lucide="ratio" style="width:16px;height:16px"></i></button>
+          <button class="ctrl-btn active hide-mobile" id="grainBtn" title="35mm Film Grain"><i data-lucide="sparkles" style="width:16px;height:16px"></i></button>
+
           <div class="ctrl-reactions hide-mobile">
             <button class="emoji-btn" data-e="❤️">❤️</button>
             <button class="emoji-btn" data-e="😂">😂</button>
@@ -202,12 +228,14 @@
         <!-- Audio Panel -->
         <div class="side-panel" id="audioPanel">
           <div class="audio-cfg">
-            <h4>🔊 Noise Filter</h4>
+            <h4>🔊 Noise Filter & DSP</h4>
             <label class="cfg-row"><span>Noise Suppression</span><input type="checkbox" id="noiseCheck" checked></label>
             <label class="cfg-row"><span>Gate Sensitivity</span><span id="gateVal">-30 dB</span></label>
             <input type="range" id="gateSlider" min="-80" max="-10" value="-30">
             <label class="cfg-row"><span>Mic Gain</span><span id="gainVal">1.0x</span></label>
             <input type="range" id="gainSlider" min="0" max="30" value="10">
+            <label class="cfg-row"><span>Audio Lip-Sync Delay</span><span id="delayVal">0 ms</span></label>
+            <input type="range" id="delaySlider" min="0" max="500" value="0">
             <div class="cfg-row"><span>Echo Cancellation</span><span class="badge-on">Active</span></div>
             <div class="meter-wrap">
               <span>Mic Level</span>
@@ -219,9 +247,25 @@
         <!-- Cinema Soundboard Panel -->
         <div class="side-panel" id="soundPanel">
           <div class="soundboard-wrap">
-            <h4>🍿 Soundboard FX</h4>
+            <h4>🍿 Soundboard FX & Nolan Audio</h4>
             <p class="soundboard-sub">Live synchronized audio reactions</p>
             <div class="soundboard-grid">
+              <button class="fx-card" data-fx="braam">
+                <span class="fx-emoji">🎺</span>
+                <span class="fx-title">Inception BRAAM</span>
+              </button>
+              <button class="fx-card" data-fx="dunkirkClock">
+                <span class="fx-emoji">⏱️</span>
+                <span class="fx-title">Dunkirk Tick</span>
+              </button>
+              <button class="fx-card" data-fx="cosmicDrone">
+                <span class="fx-emoji">🌌</span>
+                <span class="fx-title">Cosmic Drone</span>
+              </button>
+              <button class="fx-card" data-fx="trailerImpact">
+                <span class="fx-emoji">💥</span>
+                <span class="fx-title">Trailer Boom</span>
+              </button>
               <button class="fx-card" data-fx="popcorn">
                 <span class="fx-emoji">🍿</span>
                 <span class="fx-title">Popcorn</span>
@@ -233,10 +277,6 @@
               <button class="fx-card" data-fx="drumroll">
                 <span class="fx-emoji">🥁</span>
                 <span class="fx-title">Drumroll</span>
-              </button>
-              <button class="fx-card" data-fx="fanfare">
-                <span class="fx-emoji">🎺</span>
-                <span class="fx-title">Fanfare</span>
               </button>
               <button class="fx-card" data-fx="cheer">
                 <span class="fx-emoji">🎉</span>
@@ -267,6 +307,10 @@
           <div class="created-room-box">
             <span class="created-label">✨ YOUR ROOM ID IS READY</span>
             <code class="created-id" id="modalRoomId">sk-xxxxxx</code>
+
+            <!-- QR Code Container for Scan-to-Join -->
+            <div id="qrCodeContainer" class="qr-container" style="display:none"></div>
+
             <div class="created-btns">
               <button class="btn-primary w-full" id="modalCopyBtn"><i data-lucide="copy" style="width:16px;height:16px"></i> Copy Room ID</button>
               <button class="btn-outline w-full" id="modalShareBtn"><i data-lucide="share-2" style="width:16px;height:16px"></i> Copy Invite Link</button>

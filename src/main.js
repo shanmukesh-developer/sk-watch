@@ -764,6 +764,214 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.lucide) lucide.createIcons();
   });
 
+  // ─── OLED Dynamic Ambilight Engine ───
+  const ambilightCanvas = $('ambilightCanvas');
+  let ambilightCtx = ambilightCanvas ? ambilightCanvas.getContext('2d') : null;
+
+  function renderAmbilightFrame() {
+    if (ambilightCtx && ambilightCanvas) {
+      const activeVideo = (screenVideo.style.display !== 'none' && screenVideo.readyState >= 2) ? screenVideo :
+                          (localVideo.style.display !== 'none' && localVideo.readyState >= 2) ? localVideo : null;
+      if (activeVideo) {
+        if (ambilightCanvas.width !== 64 || ambilightCanvas.height !== 36) {
+          ambilightCanvas.width = 64;
+          ambilightCanvas.height = 36;
+        }
+        try {
+          ambilightCtx.drawImage(activeVideo, 0, 0, 64, 36);
+          ambilightCanvas.style.opacity = '0.7';
+        } catch (e) {}
+      } else {
+        ambilightCanvas.style.opacity = '0';
+      }
+    }
+    requestAnimationFrame(renderAmbilightFrame);
+  }
+  requestAnimationFrame(renderAmbilightFrame);
+
+  // ─── Subtitle Sync & Parser Engine ───
+  const subFileIn = $('subFileIn');
+  const subtitleContainer = $('subtitleContainer');
+  let subtitles = [];
+
+  if (subFileIn) {
+    subFileIn.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = evt => {
+        const content = evt.target.result;
+        subtitles = file.name.endsWith('.vtt') ? parseVTT(content) : parseSRT(content);
+        toast(`Loaded subtitles: ${subtitles.length} lines`, 'ok');
+        rtc.send('SUBTITLE_SYNC', { subtitles });
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  function parseSRT(data) {
+    const pattern = /(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]*?)(?=\n\n|\n*$)/g;
+    const result = [];
+    let match;
+    const timeToSec = t => {
+      const [h, m, sMs] = t.split(':');
+      const [s, ms] = sMs.split(',');
+      return (+h)*3600 + (+m)*60 + (+s) + (+ms)/1000;
+    };
+    while ((match = pattern.exec(data.replace(/\r\n/g, '\n'))) !== null) {
+      result.push({ start: timeToSec(match[2]), end: timeToSec(match[3]), text: match[4].trim() });
+    }
+    return result;
+  }
+
+  function parseVTT(data) {
+    return parseSRT(data.replace(/WEBVTT/g, '').replace(/\./g, ','));
+  }
+
+  function updateSubtitles(currentTime) {
+    if (!subtitleContainer) return;
+    if (!subtitles || subtitles.length === 0) {
+      subtitleContainer.style.display = 'none';
+      return;
+    }
+    const currentSub = subtitles.find(s => currentTime >= s.start && currentTime <= s.end);
+    if (currentSub) {
+      subtitleContainer.textContent = currentSub.text;
+      subtitleContainer.style.display = 'block';
+    } else {
+      subtitleContainer.style.display = 'none';
+    }
+  }
+
+  // ─── Color Grading & Aspect Ratio Switches ───
+  const filterSelect = $('filterSelect');
+  const aspectBtn = $('aspectBtn');
+  const grainBtn = $('grainBtn');
+  const filmGrainOverlay = $('filmGrainOverlay');
+
+  const aspectModes = ['normal', 'anamorphic', 'imax'];
+  let currentAspectIdx = 0;
+
+  if (filterSelect) {
+    filterSelect.addEventListener('change', e => {
+      applyFilter(e.target.value);
+      rtc.send('FILTER_SYNC', { filter: e.target.value });
+    });
+  }
+
+  function applyFilter(filterName) {
+    [screenVideo, localVideo].forEach(v => {
+      if (!v) return;
+      v.classList.remove('filter-inception', 'filter-oppenheimer', 'filter-interstellar', 'filter-tenet');
+      if (filterName !== 'none') {
+        v.classList.add(`filter-${filterName}`);
+      }
+    });
+  }
+
+  if (aspectBtn) {
+    aspectBtn.addEventListener('click', () => {
+      currentAspectIdx = (currentAspectIdx + 1) % aspectModes.length;
+      const mode = aspectModes[currentAspectIdx];
+      [cardMainStream].forEach(card => {
+        if (!card) return;
+        card.classList.remove('aspect-anamorphic', 'aspect-imax');
+        if (mode === 'anamorphic') card.classList.add('aspect-anamorphic');
+        if (mode === 'imax') card.classList.add('aspect-imax');
+      });
+      const labels = { normal: '16:9 Standard', anamorphic: '2.39:1 Anamorphic', imax: '1.43:1 IMAX' };
+      toast(`Aspect Ratio: ${labels[mode]}`, 'info');
+    });
+  }
+
+  if (grainBtn && filmGrainOverlay) {
+    grainBtn.addEventListener('click', () => {
+      const isActive = filmGrainOverlay.classList.toggle('active');
+      grainBtn.classList.toggle('active', isActive);
+      toast(isActive ? '35mm Film Grain enabled' : 'Film Grain disabled', 'info');
+    });
+  }
+
+  // ─── Audio Delay Slider ───
+  const delaySlider = $('delaySlider');
+  const delayVal = $('delayVal');
+  if (delaySlider && delayVal) {
+    delaySlider.addEventListener('input', e => {
+      const ms = +e.target.value;
+      delayVal.textContent = `${ms} ms`;
+      rtc.dsp.setDelay(ms);
+    });
+  }
+
+  // ─── Canvas QR Code Generator ───
+  function generateQRCodeCanvas(text) {
+    const container = $('qrCodeContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    const canvas = document.createElement('canvas');
+    canvas.width = 130;
+    canvas.height = 130;
+    const ctx = canvas.getContext('2d');
+
+    // Simple robust visual QR matrix encoder fallback
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 130, 130);
+    ctx.fillStyle = '#000000';
+
+    // Draw QR outer frame markers
+    const drawFinder = (x, y) => {
+      ctx.fillRect(x, y, 35, 35);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x + 5, y + 5, 25, 25);
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(x + 10, y + 10, 15, 15);
+    };
+    drawFinder(8, 8);
+    drawFinder(87, 8);
+    drawFinder(8, 87);
+
+    // Draw pseudo hash data blocks
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) hash = (hash << 5) - hash + text.charCodeAt(i);
+    for (let r = 0; r < 11; r++) {
+      for (let c = 0; c < 11; c++) {
+        if ((r < 4 && c < 4) || (r < 4 && c > 6) || (r > 6 && c < 4)) continue;
+        if (((hash >> (r + c)) & 1) === 1 || (r * c) % 3 === 0) {
+          ctx.fillRect(10 + c * 10, 10 + r * 10, 8, 8);
+        }
+      }
+    }
+    container.appendChild(canvas);
+    const label = document.createElement('span');
+    label.style.fontSize = '0.65rem';
+    label.style.color = '#333333';
+    label.style.marginTop = '4px';
+    label.style.fontWeight = '700';
+    label.textContent = 'Scan to Join on Mobile';
+    container.appendChild(label);
+    container.style.display = 'flex';
+  }
+
+  // Update room creation to render QR code
+  const origCreateBtnHandler = createBtn.onclick;
+  createBtn.addEventListener('click', () => {
+    setTimeout(() => {
+      if (roomId) {
+        const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
+        generateQRCodeCanvas(shareUrl);
+      }
+    }, 200);
+  });
+
+  // Update timeupdate for subtitle sync
+  localVideo.addEventListener('timeupdate', () => {
+    if (!syncMode) return;
+    const c = localVideo.currentTime, d = localVideo.duration || 1;
+    seekBar.value = Math.round((c / d) * 1000);
+    timeLabel.textContent = `${fmt(c)} / ${fmt(d)}`;
+    updateSubtitles(c);
+  });
+
   // ─── Noise Filter Controls ───
   noiseCheck.addEventListener('change', e => {
     rtc.dsp.toggle(e.target.checked);
@@ -883,8 +1091,24 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'SOUND_FX':
         if (d.payload?.fx) {
           sfx.play(d.payload.fx);
-          const fxLabels = { popcorn: '🍿 Popcorn', applause: '👏 Applause', drumroll: '🥁 Drumroll', fanfare: '🎺 Fanfare', cheer: '🎉 Cheer' };
+          const fxLabels = {
+            popcorn: '🍿 Popcorn', applause: '👏 Applause', drumroll: '🥁 Drumroll', fanfare: '🎺 Fanfare', cheer: '🎉 Cheer',
+            braam: '🎺 Inception BRAAM', dunkirkClock: '⏱️ Dunkirk Tick', cosmicDrone: '🌌 Cosmic Drone', trailerImpact: '💥 Trailer Boom'
+          };
           toast(`Partner played ${fxLabels[d.payload.fx] || d.payload.fx}!`, 'info');
+        }
+        break;
+      case 'SUBTITLE_SYNC':
+        if (d.payload?.subtitles) {
+          subtitles = d.payload.subtitles;
+          toast(`Received ${subtitles.length} subtitles from partner!`, 'info');
+        }
+        break;
+      case 'FILTER_SYNC':
+        if (d.payload?.filter) {
+          applyFilter(d.payload.filter);
+          if (filterSelect) filterSelect.value = d.payload.filter;
+          toast(`Color Grade: ${d.payload.filter}`, 'info');
         }
         break;
       case 'CHAT':

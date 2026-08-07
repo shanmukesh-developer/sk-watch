@@ -23,7 +23,150 @@ export class SoundFXEngine {
       case 'drumroll': this.drumroll(); break;
       case 'fanfare': this.fanfare(); break;
       case 'cheer': this.cheer(); break;
+      case 'braam': this.braam(); break;
+      case 'dunkirkClock': this.dunkirkClock(); break;
+      case 'cosmicDrone': this.cosmicDrone(); break;
+      case 'trailerImpact': this.trailerImpact(); break;
     }
+  }
+
+  // ─── Nolan Soundscapes & Synthesizers ───
+
+  braam() {
+    const c = this._getCtx();
+    const now = c.currentTime;
+    const duration = 2.4;
+
+    // Sub-bass layer
+    const subOsc = c.createOscillator();
+    const subGain = c.createGain();
+    subOsc.type = 'sine';
+    subOsc.frequency.setValueAtTime(65, now);
+    subOsc.frequency.exponentialRampToValueAtTime(32, now + duration);
+    subGain.gain.setValueAtTime(0.4, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    subOsc.connect(subGain);
+    subGain.connect(c.destination);
+    subOsc.start(now);
+    subOsc.stop(now + duration);
+
+    // Brass Sawtooth Detuned Pair
+    [130.81, 131.5].forEach(freq => {
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      const filter = c.createBiquadFilter();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.75, now + duration);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(3500, now);
+      filter.frequency.exponentialRampToValueAtTime(180, now + duration);
+      filter.Q.value = 4;
+
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.25, now + 0.08); // Sharp brass attack
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(c.destination);
+
+      osc.start(now);
+      osc.stop(now + duration);
+    });
+  }
+
+  dunkirkClock() {
+    const c = this._getCtx();
+    const ticks = 8;
+    const interval = 0.18;
+
+    for (let i = 0; i < ticks; i++) {
+      const st = c.currentTime + i * interval;
+      const isPitchHigh = i % 2 === 0;
+
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(isPitchHigh ? 1200 : 900, st);
+      osc.frequency.exponentialRampToValueAtTime(100, st + 0.025);
+
+      gain.gain.setValueAtTime(0.2, st);
+      gain.gain.exponentialRampToValueAtTime(0.001, st + 0.025);
+
+      osc.connect(gain);
+      gain.connect(c.destination);
+      osc.start(st);
+      osc.stop(st + 0.03);
+    }
+  }
+
+  cosmicDrone() {
+    const c = this._getCtx();
+    const now = c.currentTime;
+    const duration = 2.8;
+
+    const chords = [220, 277.18, 329.63, 440]; // A Major Ethereal Pad
+    chords.forEach(f => {
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, now);
+      osc.frequency.linearRampToValueAtTime(f * 1.02, now + duration);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.08, now + 0.6);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+      osc.connect(gain);
+      gain.connect(c.destination);
+      osc.start(now);
+      osc.stop(now + duration);
+    });
+  }
+
+  trailerImpact() {
+    const c = this._getCtx();
+    const now = c.currentTime;
+    const duration = 1.8;
+
+    // Sub-boom
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(160, now);
+    o.frequency.exponentialRampToValueAtTime(25, now + 0.5);
+
+    g.gain.setValueAtTime(0.45, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    o.connect(g);
+    g.connect(c.destination);
+    o.start(now);
+    o.stop(now + duration);
+
+    // Highpass Metallic Clang Noise
+    const bufSize = c.sampleRate * 0.5;
+    const buf = c.createBuffer(1, bufSize, c.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+
+    const noise = c.createBufferSource();
+    noise.buffer = buf;
+    const hp = c.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 2500;
+
+    const ng = c.createGain();
+    ng.gain.setValueAtTime(0.3, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+
+    noise.connect(hp);
+    hp.connect(ng);
+    ng.connect(c.destination);
+    noise.start(now);
   }
 
   popcorn() {
