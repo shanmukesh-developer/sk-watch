@@ -442,10 +442,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const modalShareBtn = $('modalShareBtn');
 
   const myId = 'sk-' + Math.floor(100000 + Math.random() * 900000);
-  rtc.init(myId).then(id => {
+  const rtcPromise = rtc.init(myId).then(id => {
     roomId = id;
-    roomIdDisplay.textContent = id;
-    if (modalRoomId) modalRoomId.textContent = id;
+    if (roomIdDisplay) roomIdDisplay.textContent = id;
+    if (modalRoomId && modalRoomId.textContent === 'Generating Room ID...') {
+      modalRoomId.textContent = id;
+    } else if (modalRoomId) {
+      modalRoomId.textContent = id;
+    }
 
     // Check URL parameters for direct room auto-join link (e.g. ?room=sk-123456)
     const urlParams = new URLSearchParams(window.location.search);
@@ -454,19 +458,37 @@ document.addEventListener('DOMContentLoaded', () => {
       joinInput.value = joinRoomParam;
       doJoin();
     }
-  }).catch(() => toast('Could not connect to signaling server', 'err'));
+    return id;
+  }).catch(err => {
+    console.error('Signaling init error:', err);
+    toast('Retrying signaling server connection...', 'warn');
+  });
 
   // ─── Room Modal ───
   openRoomBtn.addEventListener('click', () => roomModal.classList.add('open'));
   closeModalBtn.addEventListener('click', () => roomModal.classList.remove('open'));
   roomModal.addEventListener('click', e => { if (e.target === roomModal) roomModal.classList.remove('open'); });
 
-  createBtn.addEventListener('click', () => {
+  createBtn.addEventListener('click', async () => {
     roomPill.style.display = 'flex';
     if (createdRoomCard) createdRoomCard.style.display = 'block';
-    if (modalRoomId) modalRoomId.textContent = roomId;
-    sysMsg(`✨ Room created! Your Room ID is: ${roomId}`);
-    toast(`Room created: ${roomId}`, 'ok');
+
+    if (roomId) {
+      if (modalRoomId) modalRoomId.textContent = roomId;
+      sysMsg(`✨ Room created! Your Room ID is: ${roomId}`);
+      toast(`Room created: ${roomId}`, 'ok');
+    } else {
+      if (modalRoomId) modalRoomId.textContent = 'Generating Room ID...';
+      toast('Connecting to signaling server...', 'info');
+      try {
+        const id = await rtcPromise;
+        if (id && modalRoomId) {
+          modalRoomId.textContent = id;
+          sysMsg(`✨ Room created! Your Room ID is: ${id}`);
+          toast(`Room created: ${id}`, 'ok');
+        }
+      } catch (e) {}
+    }
   });
 
   if (modalCopyBtn) {
