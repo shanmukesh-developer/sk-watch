@@ -3,12 +3,23 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import http from 'http';
 import https from 'https';
+import { ExpressPeerServer } from 'peer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+const server = http.createServer(app);
+
+// Integrated PeerJS Signaling Engine on /peerjs endpoint
+const peerServer = ExpressPeerServer(server, {
+  debug: true,
+  path: '/'
+});
+
+app.use('/peerjs', peerServer);
 
 // Serve Vite build output
 app.use(express.static(path.join(__dirname, 'dist')));
@@ -23,8 +34,8 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`SK WatchParty running on port ${PORT}`);
+server.listen(PORT, () => {
+  console.log(`SK WatchParty & PeerJS Signaling Server running on port ${PORT}`);
 
   // Self-ping loop every 13 minutes so Render never sleeps
   const RENDER_URL = process.env.RENDER_EXTERNAL_URL;

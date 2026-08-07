@@ -22,44 +22,85 @@ export class RTC {
 
   init(customId) {
     return new Promise((resolve, reject) => {
-      const opts = {
+      const isHttps = window.location.protocol === 'https:';
+      const host = window.location.hostname || 'localhost';
+      const port = window.location.port ? +window.location.port : (isHttps ? 443 : 80);
+
+      const iceServers = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        { urls: 'stun:global.stun.twilio.com:3478' }
+      ];
+
+      // Primary options: Dedicated self-hosted PeerServer on /peerjs endpoint
+      const selfHostedOpts = {
+        host: host,
+        port: port,
+        path: '/peerjs',
+        secure: isHttps,
         debug: 0,
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' }
-          ]
+        config: { iceServers }
+      };
+
+      // Fallback options: Public PeerJS Cloud
+      const cloudOpts = {
+        debug: 0,
+        config: { iceServers }
+      };
+
+      let attemptedFallback = false;
+
+      const createPeer = (opts, idToUse) => {
+        try {
+          return idToUse ? new window.Peer(idToUse, opts) : new window.Peer(opts);
+        } catch (err) {
+          return new window.Peer(opts);
         }
       };
 
-      this.peer = customId ? new window.Peer(customId, opts) : new window.Peer(opts);
+      // If running on Vite dev server port 5173, use cloud directly or selfHosted
+      const isDevPort = port === 5173 || port === 3000;
+      const initialOpts = isDevPort ? cloudOpts : selfHostedOpts;
 
-      this.peer.on('open', id => {
-        this.id = id;
-        this.cb.onStatus('ready', id);
-        resolve(id);
-      });
+      this.peer = createPeer(initialOpts, customId);
 
-      this.peer.on('connection', c => this._handleConn(c));
-      this.peer.on('call', c => this._handleCall(c));
+      const setupHandlers = (p) => {
+        p.on('open', id => {
+          this.id = id;
+          this.cb.onStatus('ready', id);
+          resolve(id);
+        });
 
-      this.peer.on('error', e => {
-        console.error('[WebRTC Error]', e);
-        const msg = e.type === 'peer-unavailable' ? 'Room ID not found' : e.message;
-        this.cb.onStatus('error', msg);
-        reject(e);
-      });
+        p.on('connection', c => this._handleConn(c));
+        p.on('call', c => this._handleCall(c));
 
-      this.peer.on('disconnected', () => {
-        this.cb.onStatus('disconnected');
-        if (this.peer && !this.peer.destroyed) {
-          try { this.peer.reconnect(); } catch (err) {}
-        }
-      });
+        p.on('error', e => {
+          console.error('[WebRTC Error]', e);
+          if (!attemptedFallback && e.type !== 'peer-unavailable') {
+            attemptedFallback = true;
+            console.log('Switching signaling server fallback...');
+            try { p.destroy(); } catch (err) {}
+            this.peer = createPeer(cloudOpts, customId);
+            setupHandlers(this.peer);
+            return;
+          }
+          const msg = e.type === 'peer-unavailable' ? 'Room ID not found' : (e.message || e.type);
+          this.cb.onStatus('error', msg);
+          reject(e);
+        });
+
+        p.on('disconnected', () => {
+          this.cb.onStatus('disconnected');
+          if (p && !p.destroyed) {
+            try { p.reconnect(); } catch (err) {}
+          }
+        });
+      };
+
+      setupHandlers(this.peer);
     });
   }
 

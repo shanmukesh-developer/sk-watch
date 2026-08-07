@@ -258,15 +258,28 @@
         <button class="btn-icon" id="closeModalBtn"><i data-lucide="x" style="width:18px;height:18px"></i></button>
       </div>
       <div class="modal-body">
-        <div class="modal-section">
+        <div class="modal-section" id="createSection">
           <p class="modal-label">Create a new room</p>
           <button class="btn-primary w-full" id="createBtn"><i data-lucide="plus" style="width:16px;height:16px"></i> Create Room</button>
         </div>
+
+        <!-- Displayed after clicking Create Room or when room is active -->
+        <div class="modal-section room-active-card" id="createdRoomCard" style="display:none">
+          <div class="created-room-box">
+            <span class="created-label">✨ YOUR ROOM ID IS READY</span>
+            <code class="created-id" id="modalRoomId">sk-xxxxxx</code>
+            <div class="created-btns">
+              <button class="btn-primary w-full" id="modalCopyBtn"><i data-lucide="copy" style="width:16px;height:16px"></i> Copy Room ID</button>
+              <button class="btn-outline w-full" id="modalShareBtn"><i data-lucide="share-2" style="width:16px;height:16px"></i> Copy Invite Link</button>
+            </div>
+          </div>
+        </div>
+
         <div class="modal-divider">or</div>
         <div class="modal-section">
           <p class="modal-label">Join a friend's room</p>
           <div class="join-row">
-            <input type="text" id="joinInput" placeholder="Paste Room ID...">
+            <input type="text" id="joinInput" placeholder="Paste Room ID (e.g. sk-123456)...">
             <button class="btn-primary" id="joinBtn">Join</button>
           </div>
         </div>

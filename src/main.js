@@ -436,10 +436,24 @@ document.addEventListener('DOMContentLoaded', () => {
     onData: (d) => handleData(d)
   });
 
+  const createdRoomCard = $('createdRoomCard');
+  const modalRoomId = $('modalRoomId');
+  const modalCopyBtn = $('modalCopyBtn');
+  const modalShareBtn = $('modalShareBtn');
+
   const myId = 'sk-' + Math.floor(100000 + Math.random() * 900000);
   rtc.init(myId).then(id => {
     roomId = id;
     roomIdDisplay.textContent = id;
+    if (modalRoomId) modalRoomId.textContent = id;
+
+    // Check URL parameters for direct room auto-join link (e.g. ?room=sk-123456)
+    const urlParams = new URLSearchParams(window.location.search);
+    const joinRoomParam = urlParams.get('room') || urlParams.get('join');
+    if (joinRoomParam && joinRoomParam !== id) {
+      joinInput.value = joinRoomParam;
+      doJoin();
+    }
   }).catch(() => toast('Could not connect to signaling server', 'err'));
 
   // ─── Room Modal ───
@@ -449,10 +463,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
   createBtn.addEventListener('click', () => {
     roomPill.style.display = 'flex';
-    roomModal.classList.remove('open');
-    sysMsg(`✨ Room created: ${roomId}`);
-    toast('Room created! Share ID with your partner.', 'ok');
+    if (createdRoomCard) createdRoomCard.style.display = 'block';
+    if (modalRoomId) modalRoomId.textContent = roomId;
+    sysMsg(`✨ Room created! Your Room ID is: ${roomId}`);
+    toast(`Room created: ${roomId}`, 'ok');
   });
+
+  if (modalCopyBtn) {
+    modalCopyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(roomId).then(() => toast('Room ID copied to clipboard!', 'ok'));
+    });
+  }
+
+  if (modalShareBtn) {
+    modalShareBtn.addEventListener('click', () => {
+      const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
+      navigator.clipboard.writeText(shareUrl).then(() => toast('Direct Invite Link copied to clipboard!', 'ok'));
+    });
+  }
 
   joinBtn.addEventListener('click', doJoin);
   joinInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doJoin(); } });
