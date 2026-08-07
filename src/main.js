@@ -6,88 +6,133 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const sfx = new SoundFXEngine();
 
-  // ─── Minimalist High-Tech Sci-Fi Canvas & Aperture Shutter Engine ───
-  const cyberIntro = document.getElementById('cyberIntro');
+  // ─── Authentic Marvel Studios High-Speed Flipbook Engine ───
+  const marvelIntro = document.getElementById('marvelIntro');
   const enterTheaterBtn = document.getElementById('enterTheaterBtn');
-  const techCanvas = document.getElementById('techCanvas');
+  const flipbookCanvas = document.getElementById('flipbookCanvas');
 
-  if (techCanvas) {
-    const ctx = techCanvas.getContext('2d');
-    let width = techCanvas.width = window.innerWidth;
-    let height = techCanvas.height = window.innerHeight;
-    let scanY = 0;
+  if (flipbookCanvas) {
+    const ctx = flipbookCanvas.getContext('2d');
+    let width = flipbookCanvas.width = window.innerWidth;
+    let height = flipbookCanvas.height = window.innerHeight;
+    let frameIndex = 0;
 
-    function drawTechGrid() {
+    // Vibrant comic book panel color schemes
+    const panelColors = [
+      ['#e62429', '#151515', '#ffd700'],
+      ['#00d4ff', '#1a1e2e', '#f43f5e'],
+      ['#a855f7', '#0f172a', '#22c55e'],
+      ['#f59e0b', '#262626', '#ffffff'],
+      ['#e11d48', '#020617', '#38bdf8']
+    ];
+
+    function drawMarvelFlipbook() {
       ctx.clearRect(0, 0, width, height);
+      frameIndex++;
 
-      // Fine minimal cyan tech grid
-      ctx.strokeStyle = 'rgba(0, 212, 255, 0.04)';
-      ctx.lineWidth = 1;
+      const theme = panelColors[frameIndex % panelColors.length];
 
-      const gridSize = 40;
-      for (let x = 0; x < width; x += gridSize) {
+      // Dynamic comic book panel grid
+      ctx.fillStyle = theme[1];
+      ctx.fillRect(0, 0, width, height);
+
+      // Slanted comic action panels
+      ctx.fillStyle = theme[0];
+      ctx.beginPath();
+      ctx.moveTo(width * 0.2 + (frameIndex * 15) % 200, 0);
+      ctx.lineTo(width * 0.6 + (frameIndex * 10) % 200, 0);
+      ctx.lineTo(width * 0.4 - (frameIndex * 12) % 200, height);
+      ctx.lineTo(width * 0.1 - (frameIndex * 8) % 200, height);
+      ctx.closePath();
+      ctx.fill();
+
+      // Halftone comic dots overlay
+      ctx.fillStyle = theme[2];
+      const step = 25;
+      const offset = (frameIndex * 5) % step;
+      for (let x = offset; x < width; x += step) {
+        for (let y = offset; y < height; y += step) {
+          ctx.beginPath();
+          ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Fast action lines
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.lineWidth = 4;
+      for (let i = 0; i < 8; i++) {
+        const lx = Math.random() * width;
         ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
+        ctx.moveTo(lx, 0);
+        ctx.lineTo(lx + (Math.random() - 0.5) * 300, height);
         ctx.stroke();
       }
-      for (let y = 0; y < height; y += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
-      }
 
-      // Scanning laser horizon line
-      scanY = (scanY + 1.5) % height;
-      const grad = ctx.createLinearGradient(0, scanY - 10, 0, scanY + 10);
-      grad.addColorStop(0, 'rgba(0, 212, 255, 0)');
-      grad.addColorStop(0.5, 'rgba(0, 212, 255, 0.12)');
-      grad.addColorStop(1, 'rgba(0, 212, 255, 0)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, scanY - 10, width, 20);
-
-      if (cyberIntro && !cyberIntro.classList.contains('hidden')) {
-        requestAnimationFrame(drawTechGrid);
+      if (marvelIntro && !marvelIntro.classList.contains('hidden')) {
+        setTimeout(() => requestAnimationFrame(drawMarvelFlipbook), 45); // High speed 22fps flipbook
       }
     }
-    drawTechGrid();
+    drawMarvelFlipbook();
 
     window.addEventListener('resize', () => {
-      width = techCanvas.width = window.innerWidth;
-      height = techCanvas.height = window.innerHeight;
+      width = flipbookCanvas.width = window.innerWidth;
+      height = flipbookCanvas.height = window.innerHeight;
     });
   }
 
-  // Mechanical Iris Aperture Shutter Opening Sound & Transition
-  if (enterTheaterBtn && cyberIntro) {
+  // Marvel Studio Fanfare & Drumbeat
+  if (enterTheaterBtn && marvelIntro) {
     enterTheaterBtn.addEventListener('click', () => {
-      cyberIntro.classList.add('aperture-open');
-      playFuturisticEnergyHum();
+      marvelIntro.classList.add('zoom-in');
+      playMarvelFanfare();
       setTimeout(() => {
-        cyberIntro.classList.add('hidden');
-        setTimeout(() => cyberIntro.remove(), 900);
-      }, 950);
+        marvelIntro.classList.add('hidden');
+        setTimeout(() => marvelIntro.remove(), 850);
+      }, 900);
     });
   }
 
-  function playFuturisticEnergyHum() {
+  function playMarvelFanfare() {
     try {
       const c = new (window.AudioContext || window.webkitAudioContext)();
-      const o = c.createOscillator();
-      const g = c.createGain();
-      o.type = 'sawtooth';
-      o.frequency.setValueAtTime(120, c.currentTime);
-      o.frequency.exponentialRampToValueAtTime(880, c.currentTime + 0.6);
+      
+      // Rhythmic Marvel Drumbeat: BUM... BUM... BUM-BUM-BUM!
+      const drumTimes = [0, 0.25, 0.5, 0.65, 0.8];
+      drumTimes.forEach(t => {
+        const osc = c.createOscillator();
+        const g = c.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(110, c.currentTime + t);
+        osc.frequency.exponentialRampToValueAtTime(30, c.currentTime + t + 0.15);
+        g.gain.setValueAtTime(0.35, c.currentTime + t);
+        g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + t + 0.15);
+        osc.connect(g);
+        g.connect(c.destination);
+        osc.start(c.currentTime + t);
+        osc.stop(c.currentTime + t + 0.15);
+      });
 
-      g.gain.setValueAtTime(0.01, c.currentTime);
-      g.gain.linearRampToValueAtTime(0.12, c.currentTime + 0.3);
-      g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.8);
+      // Brass Horn Heroic Fanfare Sweep
+      const brassNotes = [
+        { f: 293.66, t: 0.8, d: 0.2 },   // D4
+        { f: 440.00, t: 1.0, d: 0.2 },   // A4
+        { f: 587.33, t: 1.2, d: 0.8 }    // D5 Grand Finish
+      ];
 
-      o.connect(g);
-      g.connect(c.destination);
-      o.start();
-      o.stop(c.currentTime + 0.8);
+      brassNotes.forEach(n => {
+        const o = c.createOscillator();
+        const g = c.createGain();
+        o.type = 'sawtooth';
+        o.frequency.value = n.f;
+        g.gain.setValueAtTime(0.01, c.currentTime + n.t);
+        g.gain.linearRampToValueAtTime(0.15, c.currentTime + n.t + 0.05);
+        g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + n.t + n.d);
+        o.connect(g);
+        g.connect(c.destination);
+        o.start(c.currentTime + n.t);
+        o.stop(c.currentTime + n.t + n.d);
+      });
     } catch {}
   }
 
