@@ -24,7 +24,7 @@ export class RTC {
     return new Promise((resolve, reject) => {
       const isHttps = window.location.protocol === 'https:';
       const host = window.location.hostname || 'localhost';
-      const port = window.location.port ? +window.location.port : (isHttps ? 443 : 80);
+      const portStr = window.location.port;
 
       const iceServers = [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -35,72 +35,94 @@ export class RTC {
         { urls: 'stun:global.stun.twilio.com:3478' }
       ];
 
-      // Primary options: Dedicated self-hosted PeerServer on /peerjs endpoint
+      // Self-hosted PeerServer options
       const selfHostedOpts = {
         host: host,
-        port: port,
         path: '/peerjs',
         secure: isHttps,
         debug: 0,
         config: { iceServers }
       };
+      if (portStr && portStr !== '80' && portStr !== '443') {
+        selfHostedOpts.port = parseInt(portStr, 10);
+      }
 
-      // Fallback options: Public PeerJS Cloud
+      // Public PeerJS Cloud options
       const cloudOpts = {
         debug: 0,
         config: { iceServers }
       };
 
-      let attemptedFallback = false;
+      // 4-stage fallback configs:
+      // Stage 1: Self-hosted + customId
+      // Stage 2: Self-hosted + autoId
+      // Stage 3: Cloud + customId
+      // Stage 4: Cloud + autoId
+      const attempts = [
+        { opts: selfHostedOpts, id: customId, name: 'Self-hosted (Custom ID)' },
+        { opts: selfHostedOpts, id: null, name: 'Self-hosted (Auto ID)' },
+        { opts: cloudOpts, id: customId, name: 'Cloud (Custom ID)' },
+        { opts: cloudOpts, id: null, name: 'Cloud (Auto ID)' }
+      ];
 
-      const createPeer = (opts, idToUse) => {
+      let currentAttemptIndex = 0;
+
+      const tryNextAttempt = () => {
+        if (currentAttemptIndex >= attempts.length) {
+          this.cb.onStatus('error', 'All signaling server attempts failed');
+          return reject(new Error('Could not connect to any signaling server'));
+        }
+
+        const config = attempts[currentAttemptIndex];
+        currentAttemptIndex++;
+        console.log(`[RTC Signaling] Attempt ${currentAttemptIndex}/${attempts.length}: ${config.name}...`);
+
         try {
-          return idToUse ? new window.Peer(idToUse, opts) : new window.Peer(opts);
+          if (this.peer && !this.peer.destroyed) {
+            try { this.peer.destroy(); } catch (e) {}
+          }
+
+          this.peer = config.id ? new window.Peer(config.id, config.opts) : new window.Peer(config.opts);
+
+          let resolved = false;
+
+          this.peer.on('open', id => {
+            if (resolved) return;
+            resolved = true;
+            this.id = id;
+            console.log(`[RTC Signaling] Successfully connected to signaling server! Room ID: ${id}`);
+            this.cb.onStatus('ready', id);
+            resolve(id);
+          });
+
+          this.peer.on('connection', c => this._handleConn(c));
+          this.peer.on('call', c => this._handleCall(c));
+
+          this.peer.on('error', e => {
+            console.warn(`[RTC Signaling Warning] Attempt ${config.name} failed:`, e);
+            if (e.type === 'peer-unavailable') {
+              // Peer unavailable means target room ID was not found during connect()
+              this.cb.onStatus('error', 'Room ID not found');
+              return;
+            }
+            if (!resolved) {
+              setTimeout(tryNextAttempt, 300);
+            }
+          });
+
+          this.peer.on('disconnected', () => {
+            this.cb.onStatus('disconnected');
+            if (this.peer && !this.peer.destroyed) {
+              try { this.peer.reconnect(); } catch (err) {}
+            }
+          });
         } catch (err) {
-          return new window.Peer(opts);
+          console.warn(`[RTC Signaling Exception] Attempt ${config.name} exception:`, err);
+          setTimeout(tryNextAttempt, 300);
         }
       };
 
-      // If running on Vite dev server port 5173, use cloud directly or selfHosted
-      const isDevPort = port === 5173 || port === 3000;
-      const initialOpts = isDevPort ? cloudOpts : selfHostedOpts;
-
-      this.peer = createPeer(initialOpts, customId);
-
-      const setupHandlers = (p) => {
-        p.on('open', id => {
-          this.id = id;
-          this.cb.onStatus('ready', id);
-          resolve(id);
-        });
-
-        p.on('connection', c => this._handleConn(c));
-        p.on('call', c => this._handleCall(c));
-
-        p.on('error', e => {
-          console.error('[WebRTC Error]', e);
-          if (!attemptedFallback && e.type !== 'peer-unavailable') {
-            attemptedFallback = true;
-            console.log('Switching signaling server fallback...');
-            try { p.destroy(); } catch (err) {}
-            this.peer = createPeer(cloudOpts, customId);
-            setupHandlers(this.peer);
-            return;
-          }
-          const msg = e.type === 'peer-unavailable' ? 'Room ID not found' : (e.message || e.type);
-          this.cb.onStatus('error', msg);
-          reject(e);
-        });
-
-        p.on('disconnected', () => {
-          this.cb.onStatus('disconnected');
-          if (p && !p.destroyed) {
-            try { p.reconnect(); } catch (err) {}
-          }
-        });
-      };
-
-      setupHandlers(this.peer);
+      tryNextAttempt();
     });
   }
 
