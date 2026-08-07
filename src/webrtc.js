@@ -260,19 +260,59 @@ export class RTC {
     if (this.screenStream) {
       this.stopScreen();
     }
-    const s = await navigator.mediaDevices.getDisplayMedia({
-      video: { width: { ideal: 3840, min: 1920 }, height: { ideal: 2160, min: 1080 }, frameRate: { ideal: 60, min: 30 } },
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      throw new Error('SECURE_CONTEXT_REQUIRED');
+    }
+
+    const preferredOptions = {
+      video: {
+        width: { ideal: 1920, max: 3840 },
+        height: { ideal: 1080, max: 2160 },
+        frameRate: { ideal: 60, max: 60 }
+      },
       audio: {
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: false,
-        channelCount: 2,
-        sampleRate: 48000,
         suppressLocalAudioPlayback: false
       }
-    });
+    };
+
+    const fallbackOptions1 = {
+      video: {
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: true
+    };
+
+    const fallbackOptions2 = {
+      video: true,
+      audio: false
+    };
+
+    let s;
+    try {
+      s = await navigator.mediaDevices.getDisplayMedia(preferredOptions);
+    } catch (err1) {
+      if (err1.name === 'NotAllowedError' || err1.name === 'PermissionDeniedError') {
+        throw err1;
+      }
+      try {
+        s = await navigator.mediaDevices.getDisplayMedia(fallbackOptions1);
+      } catch (err2) {
+        if (err2.name === 'NotAllowedError' || err2.name === 'PermissionDeniedError') {
+          throw err2;
+        }
+        s = await navigator.mediaDevices.getDisplayMedia(fallbackOptions2);
+      }
+    }
+
     this.screenStream = s;
-    s.getVideoTracks()[0].onended = () => this.stopScreen();
+    const vTrack = s.getVideoTracks()[0];
+    if (vTrack) {
+      vTrack.addEventListener('ended', () => this.stopScreen());
+    }
 
     if (this.conn?.open) {
       this.rebindCustomStream(s);
@@ -288,22 +328,30 @@ export class RTC {
     this.screenStream = s;
     if (!this.conn?.open) return s;
 
-    // Check if active call exists and attempt seamless replaceTrack
+    // Check if active call exists and attempt seamless replaceTrack if senders match
     let replaced = false;
     if (this.screenCall && this.screenCall.peerConnection) {
       try {
         const senders = this.screenCall.peerConnection.getSenders();
         const vTrack = s.getVideoTracks()[0];
         const aTrack = s.getAudioTracks()[0];
-        senders.forEach(sender => {
-          if (sender.track?.kind === 'video' && vTrack) {
-            sender.replaceTrack(vTrack);
-            replaced = true;
-          } else if (sender.track?.kind === 'audio' && aTrack) {
-            sender.replaceTrack(aTrack);
-            replaced = true;
-          }
-        });
+
+        const hasVideoSender = senders.some(sender => sender.track?.kind === 'video');
+        const hasAudioSender = senders.some(sender => sender.track?.kind === 'audio');
+
+        const videoMatches = !vTrack || hasVideoSender;
+        const audioMatches = !aTrack || hasAudioSender;
+
+        if (videoMatches && audioMatches) {
+          senders.forEach(sender => {
+            if (sender.track?.kind === 'video' && vTrack) {
+              sender.replaceTrack(vTrack);
+            } else if (sender.track?.kind === 'audio' && aTrack) {
+              sender.replaceTrack(aTrack);
+            }
+          });
+          replaced = true;
+        }
       } catch (e) {
         replaced = false;
       }
@@ -332,7 +380,7 @@ export class RTC {
 
   async startCam() {
     const raw = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 60, min: 30 }, facingMode: 'user' },
+      video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 }, facingMode: 'user' },
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: { ideal: 2 }, sampleRate: { ideal: 48000 } }
     });
     this.rawCamStream = raw;

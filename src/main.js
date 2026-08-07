@@ -417,9 +417,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         toast('Receiving HD screen & audio!', 'ok');
       } else {
+        sharing = false;
         screenVideo.srcObject = null;
         screenVideo.style.display = 'none';
         cardMainStream.style.display = 'none';
+        shareBtn.innerHTML = `<i data-lucide="monitor" style="width:18px;height:18px"></i> Share Screen`;
+        shareBtn.classList.remove('btn-danger');
+        if (window.lucide) lucide.createIcons();
         if (!syncMode) {
           welcome.style.display = 'flex';
           setViewMode('grid');
@@ -533,15 +537,6 @@ document.addEventListener('DOMContentLoaded', () => {
   shareBtn.addEventListener('click', async () => {
     if (sharing) {
       rtc.stopScreen();
-      screenVideo.srcObject = null;
-      screenVideo.style.display = 'none';
-      cardMainStream.style.display = 'none';
-      welcome.style.display = 'flex';
-      sharing = false;
-      shareBtn.innerHTML = `<i data-lucide="monitor" style="width:18px;height:18px"></i> Share Screen`;
-      shareBtn.classList.remove('btn-danger');
-      if (window.lucide) lucide.createIcons();
-      setViewMode('grid');
       return;
     }
     try {
@@ -560,21 +555,27 @@ document.addEventListener('DOMContentLoaded', () => {
       shareBtn.classList.add('btn-danger');
       if (window.lucide) lucide.createIcons();
       setViewMode('stage');
-      sysMsg('🖥️ Sharing screen with HD audio!');
+      sysMsg('🖥️ Sharing screen!');
       toast('Screen sharing started!', 'ok');
 
-      s.getVideoTracks()[0].onended = () => {
-        sharing = false;
-        screenVideo.srcObject = null;
-        screenVideo.style.display = 'none';
-        cardMainStream.style.display = 'none';
-        welcome.style.display = 'flex';
-        shareBtn.innerHTML = `<i data-lucide="monitor" style="width:18px;height:18px"></i> Share Screen`;
-        shareBtn.classList.remove('btn-danger');
-        if (window.lucide) lucide.createIcons();
-        setViewMode('grid');
-      };
-    } catch (e) { /* cancelled */ }
+      const vTrack = s.getVideoTracks()[0];
+      if (vTrack) {
+        vTrack.addEventListener('ended', () => {
+          rtc.stopScreen();
+        });
+      }
+    } catch (e) {
+      if (e.message === 'SECURE_CONTEXT_REQUIRED') {
+        toast('Screen sharing requires HTTPS or localhost!', 'warn');
+        sysMsg('⚠️ Screen sharing is blocked in non-secure HTTP contexts. Please use HTTPS or localhost.');
+      } else if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+        toast('Screen sharing cancelled', 'info');
+      } else {
+        console.error('Screen sharing error:', e);
+        toast(`Screen share error: ${e.message || 'Failed to capture screen'}`, 'warn');
+        sysMsg(`❌ Could not start screen share: ${e.message || e.name}`);
+      }
+    }
   });
 
   // ─── Local Video Sync & Replay Stream Fix ───
