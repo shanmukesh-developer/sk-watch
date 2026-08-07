@@ -52,6 +52,7 @@ export class RTC {
       const portStr = window.location.port;
 
       const iceServers = [
+        // STUN servers (For Direct P2P NAT Mapping)
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:stun2.l.google.com:19302' },
@@ -59,7 +60,25 @@ export class RTC {
         { urls: 'stun:stun4.l.google.com:19302' },
         { urls: 'stun:stun.services.mozilla.com:3478' },
         { urls: 'stun:global.stun.twilio.com:3478' },
-        { urls: 'stun:stun.cloudflare.com:3478' }
+        { urls: 'stun:stun.cloudflare.com:3478' },
+
+        // TURN Relay Servers (Essential for connections across different networks, cellular data, firewalls, and symmetric NATs)
+        { urls: 'stun:openrelay.metered.ca:80' },
+        {
+          urls: 'turn:openrelay.metered.ca:80',
+          username: 'openrelay',
+          credential: 'openrelay'
+        },
+        {
+          urls: 'turn:openrelay.metered.ca:443',
+          username: 'openrelay',
+          credential: 'openrelay'
+        },
+        {
+          urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+          username: 'openrelay',
+          credential: 'openrelay'
+        }
       ];
 
       // Self-hosted PeerServer options (/peerjs path)
@@ -127,6 +146,11 @@ export class RTC {
           this.peer.on('error', e => {
             console.warn(`[RTC Signaling Warning] ${config.name} error:`, e.type, e.message);
             if (e.type === 'peer-unavailable') {
+              if (currentAttemptIndex < attempts.length && !resolved) {
+                console.warn(`[RTC Signaling] Peer unavailable on ${config.name}, trying fallback server...`);
+                setTimeout(tryNextAttempt, 100);
+                return;
+              }
               this.cb.onStatus('error', 'Room ID not found or host is offline');
               return;
             }
@@ -278,14 +302,14 @@ export class RTC {
     this.conn = c;
     if (targetId) this._targetPeerId = targetId;
 
-    // Timeout safety net: If connection stays stuck connecting for 15 seconds
+    // Timeout safety net: If connection stays stuck connecting for 25 seconds (allows TURN relay discovery across cellular & different networks)
     const connTimeout = setTimeout(() => {
       if (c && !c.open) {
         console.warn('[RTC DataConnection Timeout] Connection attempt timed out');
-        this.cb.onStatus('error', `Connection timed out to ${targetId || c.peer}. Host may be offline.`);
+        this.cb.onStatus('error', `Connection timed out to ${targetId || c.peer}. Host may be offline or unreachable on network.`);
         try { c.close(); } catch (e) {}
       }
-    }, 15000);
+    }, 25000);
 
     c.on('open', () => {
       clearTimeout(connTimeout);
