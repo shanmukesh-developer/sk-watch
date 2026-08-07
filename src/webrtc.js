@@ -323,7 +323,10 @@ export class RTC {
         noiseSuppression: false,
         autoGainControl: false,
         suppressLocalAudioPlayback: false
-      }
+      },
+      surfaceSwitching: 'include',
+      selfBrowserSurface: 'exclude',
+      systemAudio: 'include'
     };
 
     const fallbackOptions1 = {
