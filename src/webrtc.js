@@ -87,6 +87,7 @@ export class RTC {
         path: '/peerjs',
         secure: isHttps,
         debug: 0,
+        pingInterval: 5000,
         config: { iceServers, iceTransportPolicy: 'all' }
       };
       if (portStr && portStr !== '80' && portStr !== '443') {
@@ -100,8 +101,12 @@ export class RTC {
         path: '/',
         secure: true,
         debug: 0,
+        pingInterval: 5000,
         config: { iceServers, iceTransportPolicy: 'all' }
       };
+
+      this._cloudOpts = cloudOpts;
+      this._selfHostedOpts = selfHostedOpts;
 
       const attempts = [
         { opts: selfHostedOpts, id: customId, name: 'Self-Hosted /peerjs' },
@@ -146,22 +151,30 @@ export class RTC {
           this.peer.on('error', e => {
             console.warn(`[RTC Signaling Warning] ${config.name} error:`, e.type, e.message);
             if (e.type === 'peer-unavailable') {
-              if (currentAttemptIndex < attempts.length && !resolved) {
-                console.warn(`[RTC Signaling] Peer unavailable on ${config.name}, trying fallback server...`);
-                setTimeout(tryNextAttempt, 100);
+              // If connecting to a target peer and got peer-unavailable on primary server, try fallback cloud server
+              if (this._targetPeerId && !this._triedCloudFallback) {
+                this._triedCloudFallback = true;
+                console.log('[RTC Signaling] Host not on current server, trying cloud signaling server fallback...');
+                this._switchServerAndConnect(this._targetPeerId, cloudOpts);
                 return;
               }
-              this.cb.onStatus('error', 'Room ID not found or host is offline');
+              if (this._targetPeerId && this._peerUnavailableRetries < 2) {
+                this._peerUnavailableRetries++;
+                console.log(`[RTC Signaling] Retrying connection to host ${this._targetPeerId} (Attempt ${this._peerUnavailableRetries}/2)...`);
+                setTimeout(() => this.connect(this._targetPeerId), 2000);
+                return;
+              }
+              this.cb.onStatus('error', 'Room ID not found or host is offline. Verify Room ID.');
               return;
             }
             if (e.type === 'unavailable-id') {
               console.warn(`[RTC Signaling Warning] ID ${config.id} in use, trying auto-generated ID...`);
               config.id = null;
-              if (!resolved) setTimeout(tryNextAttempt, 200);
+              if (!resolved) setTimeout(tryNextAttempt, 500);
               return;
             }
             if (!resolved) {
-              setTimeout(tryNextAttempt, 200);
+              setTimeout(tryNextAttempt, 1500);
             }
           });
 
@@ -173,7 +186,7 @@ export class RTC {
           });
         } catch (err) {
           console.warn(`[RTC Signaling Exception] ${config.name} exception:`, err);
-          setTimeout(tryNextAttempt, 200);
+          setTimeout(tryNextAttempt, 1500);
         }
       };
 
@@ -181,9 +194,38 @@ export class RTC {
     });
   }
 
+  // Switch signaling server target (e.g. from self-hosted to cloud fallback) and join
+  async _switchServerAndConnect(targetId, serverOpts) {
+    try {
+      this.cb.onStatus('connecting');
+      if (this.peer && !this.peer.destroyed) {
+        try { this.peer.destroy(); } catch (e) {}
+      }
+      this.peer = new Peer(serverOpts);
+      this.peer.on('open', id => {
+        this.id = id;
+        console.log(`[RTC Signaling] Switched signaling server successfully! Room ID: ${id}`);
+        this.connect(targetId);
+      });
+      this.peer.on('connection', c => this._handleConn(c));
+      this.peer.on('call', c => this._handleCall(c));
+      this.peer.on('error', e => {
+        console.warn('[RTC Fallback Signaling Error]', e.type, e.message);
+        this.cb.onStatus('error', 'Host is offline or Room ID is invalid.');
+      });
+    } catch (e) {
+      console.error('[RTC Switch Server Exception]', e);
+      this.cb.onStatus('error', 'Could not reach signaling server');
+    }
+  }
+
   connect(targetId) {
     if (!targetId) return;
-    this._targetPeerId = targetId;
+    if (this._targetPeerId !== targetId) {
+      this._targetPeerId = targetId;
+      this._triedCloudFallback = false;
+      this._peerUnavailableRetries = 0;
+    }
     if (!this._isReconnecting) {
       this._reconnectAttempts = 0;
     }
