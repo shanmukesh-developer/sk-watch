@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Video Queue / Playlist State
   let playlist = [];
   let currentPlaylistIndex = -1;
+  let bookmarks = [];
 
   // Laser Pointer / Drawing Annotation State
   let isDrawingMode = false;
@@ -385,6 +386,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const shortcutsBtn = $('shortcutsBtn');
   const drawBtn = $('drawBtn');
   const diagnosticsBtn = $('diagnosticsBtn');
+  const addBookmarkBtn = $('addBookmarkBtn');
 
   const chatLog = $('chatLog');
   const chatForm = $('chatForm');
@@ -408,6 +410,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const eqMidVal = $('eqMidVal');
   const eqTrebleSlider = $('eqTrebleSlider');
   const eqTrebleVal = $('eqTrebleVal');
+  const spectrumCanvas = $('spectrumCanvas');
+  const spectrumCtx = spectrumCanvas ? spectrumCanvas.getContext('2d') : null;
 
   const statsRtt = $('statsRtt');
   const statsPacketLoss = $('statsPacketLoss');
@@ -416,6 +420,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const playlistIn = $('playlistIn');
   const playlistItems = $('playlistItems');
+  const bookmarkItems = $('bookmarkItems');
+
+  const drawPalette = $('drawPalette');
+  const clearDrawBtn = $('clearDrawBtn');
 
   const reconnectingOverlay = $('reconnectingOverlay');
   const reconnectingText = $('reconnectingText');
@@ -728,6 +736,37 @@ document.addEventListener('DOMContentLoaded', () => {
   if (eqMidSlider) eqMidSlider.addEventListener('input', updateEQ);
   if (eqTrebleSlider) eqTrebleSlider.addEventListener('input', updateEQ);
 
+  // ─── Real-Time 32-Bar Audio Spectrum Visualizer Engine ───
+  function drawAudioSpectrum() {
+    if (spectrumCtx && spectrumCanvas) {
+      spectrumCtx.clearRect(0, 0, spectrumCanvas.width, spectrumCanvas.height);
+
+      if (rtc.dsp && rtc.dsp.analyser) {
+        const freqData = new Uint8Array(rtc.dsp.analyser.frequencyBinCount);
+        rtc.dsp.analyser.getByteFrequencyData(freqData);
+
+        const bars = 28;
+        const barWidth = Math.floor(spectrumCanvas.width / bars) - 2;
+
+        for (let i = 0; i < bars; i++) {
+          const val = freqData[i * 2] || 0;
+          const barHeight = Math.max(3, Math.floor((val / 255) * spectrumCanvas.height));
+          const x = i * (barWidth + 2);
+          const y = spectrumCanvas.height - barHeight;
+
+          const grad = spectrumCtx.createLinearGradient(0, spectrumCanvas.height, 0, 0);
+          grad.addColorStop(0, 'rgba(0, 212, 255, 0.4)');
+          grad.addColorStop(1, 'rgba(168, 85, 247, 0.9)');
+
+          spectrumCtx.fillStyle = grad;
+          spectrumCtx.fillRect(x, y, barWidth, barHeight);
+        }
+      }
+    }
+    requestAnimationFrame(drawAudioSpectrum);
+  }
+  requestAnimationFrame(drawAudioSpectrum);
+
   // ─── Remote Volume Booster ───
   if (remoteVolSlider && remoteVolVal) {
     remoteVolSlider.addEventListener('input', e => {
@@ -900,7 +939,26 @@ document.addEventListener('DOMContentLoaded', () => {
       isDrawingMode = !isDrawingMode;
       drawBtn.classList.toggle('drawing', isDrawingMode);
       annotationCanvas.classList.toggle('active', isDrawingMode);
+      if (drawPalette) drawPalette.style.display = isDrawingMode ? 'flex' : 'none';
       toast(isDrawingMode ? 'Laser Pointer / Draw mode active' : 'Draw mode off', 'info');
+    });
+  }
+
+  // Drawing Color Palette Buttons
+  document.querySelectorAll('.color-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      drawColor = btn.dataset.color || '#00d4ff';
+    });
+  });
+
+  if (clearDrawBtn) {
+    clearDrawBtn.addEventListener('click', () => {
+      if (annotationCtx && annotationCanvas) {
+        annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
+        toast('Drawing canvas cleared', 'info');
+      }
     });
   }
 
@@ -922,7 +980,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setTimeout(() => {
       annotationCtx.clearRect(0, 0, cw, ch);
-    }, 1200);
+    }, 1400);
   }
 
   if (annotationCanvas) {
@@ -945,6 +1003,51 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     annotationCanvas.addEventListener('mouseup', () => { isMouseDown = false; });
+  }
+
+  // ─── Timed Bookmarks System ───
+  if (addBookmarkBtn) {
+    addBookmarkBtn.addEventListener('click', () => {
+      if (!syncMode || !localVideo.currentTime) return toast('No active video to bookmark', 'warn');
+      const timeSec = localVideo.currentTime;
+      const timeFormatted = fmt(timeSec);
+      const note = prompt(`Add note for bookmark at ${timeFormatted}:`, 'Favorite Scene');
+      if (note !== null) {
+        bookmarks.push({ time: timeSec, label: note || timeFormatted });
+        renderBookmarksUI();
+        toast(`Bookmarked at ${timeFormatted}`, 'ok');
+      }
+    });
+  }
+
+  function renderBookmarksUI() {
+    if (!bookmarkItems) return;
+    if (bookmarks.length === 0) {
+      bookmarkItems.innerHTML = `<li class="playlist-empty">No bookmarks saved yet. Click 🔖 in controls dock!</li>`;
+      return;
+    }
+    bookmarkItems.innerHTML = '';
+    bookmarks.forEach((bm, idx) => {
+      const li = document.createElement('li');
+      li.className = 'bookmark-item';
+      li.innerHTML = `
+        <span class="bookmark-time">⏱️ ${fmt(bm.time)}</span>
+        <span style="flex:1;margin:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bm.label)}</span>
+        <button class="playlist-remove" title="Delete"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+      `;
+      li.addEventListener('click', e => {
+        if (e.target.closest('.playlist-remove')) return;
+        localVideo.currentTime = bm.time;
+        rtc.send('SYNC', { a: 'seek', t: bm.time });
+        toast(`Jumped to ${fmt(bm.time)}`, 'info');
+      });
+      li.querySelector('.playlist-remove').addEventListener('click', () => {
+        bookmarks.splice(idx, 1);
+        renderBookmarksUI();
+      });
+      bookmarkItems.appendChild(li);
+    });
+    if (window.lucide) lucide.createIcons();
   }
 
   // ─── Web Video URL Streamer ───
@@ -1971,7 +2074,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const move = e2 => { e2.preventDefault(); const t2 = e2.touches[0]; onDragMove(t2.clientX, t2.clientY); };
     const end = () => { document.removeEventListener('touchmove', move); document.removeEventListener('touchend', end); };
     document.addEventListener('touchmove', move, { passive: false });
-    document.addEventListener('touchend', end);
+    document.addEventListener('touchEnd', end);
   }, { passive: true });
 
   // ─── Utilities ───

@@ -108,6 +108,16 @@
 
         <!-- Real-Time Synchronized Drawing & Laser Annotation Canvas -->
         <canvas id="annotationCanvas" class="annotation-canvas"></canvas>
+
+        <!-- Drawing Controls Floating Palette (Active during D mode) -->
+        <div class="draw-palette" id="drawPalette" style="display:none">
+          <button class="color-btn active" data-color="#00d4ff" style="background:#00d4ff"></button>
+          <button class="color-btn" data-color="#f43f5e" style="background:#f43f5e"></button>
+          <button class="color-btn" data-color="#ffd700" style="background:#ffd700"></button>
+          <button class="color-btn" data-color="#22c55e" style="background:#22c55e"></button>
+          <button class="color-btn" data-color="#a855f7" style="background:#a855f7"></button>
+          <button class="sm-btn" id="clearDrawBtn" title="Clear Canvas"><i data-lucide="trash" style="width:13px;height:13px"></i></button>
+        </div>
         
         <!-- Authentic 35mm Celluloid Film Grain Overlay -->
         <div id="filmGrainOverlay" class="film-grain-overlay"></div>
@@ -227,6 +237,9 @@
           <!-- Skip Forward 10s -->
           <button class="ctrl-btn hide-mobile" id="skipFwdBtn" title="Skip Forward 10s (→)"><i data-lucide="skip-forward" style="width:14px;height:14px"></i></button>
 
+          <!-- Add Bookmark Button -->
+          <button class="ctrl-btn hide-mobile" id="addBookmarkBtn" title="Bookmark Current Timestamp"><i data-lucide="bookmark" style="width:16px;height:16px"></i></button>
+
           <!-- Playback Speed -->
           <select id="speedSelect" class="ctrl-select hide-mobile" title="Playback Speed">
             <option value="0.5">0.5x</option>
@@ -316,6 +329,12 @@
             <label class="cfg-row"><span>Audio Lip-Sync Delay</span><span id="delayVal">0 ms</span></label>
             <input type="range" id="delaySlider" min="0" max="500" value="0">
             
+            <!-- Live Audio Spectrum Visualizer -->
+            <h4 style="margin-top:8px">📊 Real-Time Audio Spectrum</h4>
+            <div class="spectrum-wrap">
+              <canvas id="spectrumCanvas" class="spectrum-canvas" width="260" height="40"></canvas>
+            </div>
+
             <!-- 3-Band Equalizer -->
             <h4 style="margin-top:8px">🎛️ 3-Band Cinema Equalizer</h4>
             <label class="cfg-row"><span>Bass Boost (90Hz)</span><span id="eqBassVal">0 dB</span></label>
@@ -360,6 +379,14 @@
             <ul class="playlist-items" id="playlistItems">
               <li class="playlist-empty">No videos queued. Click "Add Videos" or drag files into theater!</li>
             </ul>
+
+            <!-- Bookmarks Section -->
+            <div class="bookmarks-section" style="margin-top:14px">
+              <h4>🔖 Timed Bookmarks</h4>
+              <ul class="bookmark-items" id="bookmarkItems">
+                <li class="playlist-empty">No bookmarks saved yet. Click 🔖 in controls dock!</li>
+              </ul>
+            </div>
           </div>
         </div>
 

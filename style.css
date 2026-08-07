@@ -126,6 +126,11 @@ body.theater .app{padding:4px;gap:4px}
 .annotation-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:16;transition:opacity 0.2s ease}
 .annotation-canvas.active{pointer-events:auto;cursor:crosshair}
 
+/* Drawing Floating Color Palette */
+.draw-palette{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:22;display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--r-full);background:rgba(0,0,0,0.75);backdrop-filter:blur(10px);border:1px solid var(--border2);box-shadow:0 4px 15px rgba(0,0,0,0.6)}
+.color-btn{width:20px;height:20px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:transform .15s ease}
+.color-btn:hover,.color-btn.active{transform:scale(1.3);border-color:#ffffff;box-shadow:0 0 8px rgba(255,255,255,.5)}
+
 /* Authentic 35mm Celluloid Film Grain Overlay */
 .film-grain-overlay{position:absolute;inset:0;pointer-events:none;z-index:9;opacity:0.18;display:none;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");animation:grainFlicker 0.15s steps(2) infinite}
 .film-grain-overlay.active{display:block}
@@ -377,6 +382,10 @@ body.theater .app{padding:4px;gap:4px}
 .audio-cfg input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--cyan);cursor:pointer}
 .audio-cfg input[type="range"]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--cyan);cursor:pointer;border:none}
 
+/* Spectrum visualizer canvas */
+.spectrum-wrap{background:rgba(0,0,0,0.5);border:1px solid var(--border);border-radius:var(--r);padding:6px;display:flex;align-items:center;justify-content:center}
+.spectrum-canvas{display:block;width:100%;height:40px;border-radius:4px}
+
 .meter-wrap{display:flex;flex-direction:column;gap:4px;font-size:.75rem;color:var(--text3)}
 .meter{width:100%;height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden}
 .meter-fill{width:0%;height:100%;background:linear-gradient(90deg,var(--cyan),var(--green));transition:width .06s ease}
@@ -387,13 +396,19 @@ body.theater .app{padding:4px;gap:4px}
 .playlist-top h4{font-size:.95rem;font-weight:700;color:#fff}
 .playlist-sub{font-size:.72rem;color:var(--text3);margin-bottom:6px}
 .playlist-items{list-style:none;display:flex;flex-direction:column;gap:6px;margin-top:4px}
-.playlist-empty{font-size:.78rem;color:var(--text3);line-height:1.4;text-align:center;padding:20px 10px;background:rgba(255,255,255,.02);border:1px dashed var(--border);border-radius:var(--r)}
+.playlist-empty{font-size:.78rem;color:var(--text3);line-height:1.4;text-align:center;padding:16px 10px;background:rgba(255,255,255,.02);border:1px dashed var(--border);border-radius:var(--r)}
 .playlist-item{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:var(--r);font-size:.78rem;cursor:pointer;transition:var(--tr)}
 .playlist-item:hover{background:rgba(0,212,255,.08);border-color:var(--cyan)}
 .playlist-item.active{background:rgba(0,212,255,.15);border-color:var(--cyan);font-weight:700;color:#fff}
 .playlist-name{display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .playlist-remove{width:20px;height:20px;border-radius:3px;background:transparent;border:none;color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center}
 .playlist-remove:hover{color:var(--rose)}
+
+/* Bookmarks */
+.bookmark-items{list-style:none;display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.bookmark-item{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:var(--r);font-size:.75rem;cursor:pointer;transition:var(--tr)}
+.bookmark-item:hover{background:rgba(0,212,255,.1);border-color:var(--cyan)}
+.bookmark-time{font-weight:700;color:var(--cyan);letter-spacing:.5px}
 
 /* ── Stats Panel ── */
 .stats-panel{margin-top:8px;padding-top:12px;border-top:1px solid var(--border)}
