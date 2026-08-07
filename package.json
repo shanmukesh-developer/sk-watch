@@ -12,7 +12,9 @@
   "dependencies": {
     "express": "^4.21.2",
     "peer": "^1.0.2",
-    "peerjs": "^1.5.5"
+    "peerjs": "^1.5.5",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "vite": "^6.1.0"

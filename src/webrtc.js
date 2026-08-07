@@ -1,4 +1,5 @@
 import Peer from 'peerjs';
+import { io } from 'socket.io-client';
 import { AudioDSP } from './audio-processor.js';
 
 export class RTC {
@@ -10,6 +11,11 @@ export class RTC {
     this.camStream = null;
     this.screenStream = null;
     this.dsp = new AudioDSP();
+
+    // Socket.IO relay (primary data channel — works across ALL networks)
+    this.socket = null;
+    this._socketConnected = false;
+    this._socketRoomJoined = false;
 
     // Reconnection state
     this._targetPeerId = null;
@@ -32,6 +38,9 @@ export class RTC {
     this._statsInterval = null;
     this._latestStats = { rtt: 0, bitrate: 0, packetLoss: 0, resolution: '', fps: 0 };
 
+    // Deduplication for messages received via both Socket.IO and WebRTC
+    this._recentMsgIds = new Set();
+
     this.cb = {
       onStatus: cb.onStatus || (() => {}),
       onConnect: cb.onConnect || (() => {}),
@@ -44,8 +53,122 @@ export class RTC {
     };
   }
 
+  // ─── Socket.IO Connection (Primary Data Relay) ───
+  _initSocketIO() {
+    if (this.socket) return;
+
+    const socketUrl = window.location.origin;
+    this.socket = io(socketUrl, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000,
+      timeout: 15000
+    });
+
+    this.socket.on('connect', () => {
+      console.log('[Socket.IO] Connected to relay server:', this.socket.id);
+      this._socketConnected = true;
+
+      // Auto-join room if we have a room ID
+      if (this.id) {
+        this._joinSocketRoom(this.id);
+      }
+    });
+
+    this.socket.on('disconnect', (reason) => {
+      console.log('[Socket.IO] Disconnected from relay:', reason);
+      this._socketConnected = false;
+      this._socketRoomJoined = false;
+    });
+
+    // Receive data relayed through Socket.IO
+    this.socket.on('room-data', (data) => {
+      if (!data || typeof data !== 'object') return;
+
+      // Deduplicate: skip if we already received this via WebRTC
+      if (data._msgId && this._recentMsgIds.has(data._msgId)) return;
+      if (data._msgId) {
+        this._recentMsgIds.add(data._msgId);
+        setTimeout(() => this._recentMsgIds.delete(data._msgId), 5000);
+      }
+
+      // Handle internal heartbeat messages
+      if (data.type === '__HEARTBEAT__' || data.type === '__HEARTBEAT_ACK__') {
+        this._onHeartbeatReceived();
+        return;
+      }
+
+      this.cb.onData(data);
+    });
+
+    // Someone joined our room via Socket.IO
+    this.socket.on('peer-joined', (info) => {
+      console.log('[Socket.IO] Peer joined room:', info);
+      this._targetPeerId = info.socketId;
+      this._reconnectAttempts = 0;
+      this._isReconnecting = false;
+      this.cb.onConnect(info.socketId);
+      this.cb.onStatus('connected');
+      this._startHeartbeat();
+
+      // Also attempt PeerJS WebRTC connection for media streams
+      if (this.peer && this.peer.open && this._targetPeerId) {
+        this._attemptWebRTCDataConn(this._targetPeerId);
+      }
+    });
+
+    // Someone left our room
+    this.socket.on('peer-left', (info) => {
+      console.log('[Socket.IO] Peer left room:', info);
+      this._stopHeartbeat();
+      this._stopStatsMonitor();
+      this.cb.onDisconnect();
+      this.cb.onStatus('disconnected');
+    });
+
+    // Room join confirmation
+    this.socket.on('room-joined', (info) => {
+      console.log('[Socket.IO] Joined room:', info.roomId, 'Members:', info.memberCount);
+      this._socketRoomJoined = true;
+
+      // If there are already members (we're the joiner), we're connected
+      if (info.memberCount > 1) {
+        this._reconnectAttempts = 0;
+        this._isReconnecting = false;
+        this.cb.onConnect(info.roomId);
+        this.cb.onStatus('connected');
+        this._startHeartbeat();
+      }
+    });
+  }
+
+  _joinSocketRoom(roomId, nickname) {
+    if (this.socket && this._socketConnected) {
+      this.socket.emit('join-room', roomId, nickname || '');
+      console.log('[Socket.IO] Joining room:', roomId);
+    }
+  }
+
+  // Attempt a PeerJS WebRTC data connection (bonus for lower latency, not required)
+  _attemptWebRTCDataConn(targetPeerId) {
+    if (!this.peer || !this.peer.open || this.peer.destroyed) return;
+    try {
+      console.log('[RTC] Attempting WebRTC P2P data connection to:', targetPeerId);
+      const c = this.peer.connect(targetPeerId, { reliable: true, serialization: 'json' });
+      this._handleConn(c, targetPeerId);
+    } catch (e) {
+      console.warn('[RTC] WebRTC data connection attempt failed (Socket.IO relay active):', e.message);
+    }
+  }
+
   init(customId) {
     this._customId = customId;
+
+    // Initialize Socket.IO relay first (always works)
+    this._initSocketIO();
+
     return new Promise((resolve, reject) => {
       const isHttps = window.location.protocol === 'https:';
       const host = window.location.hostname || 'localhost';
@@ -62,7 +185,7 @@ export class RTC {
         { urls: 'stun:global.stun.twilio.com:3478' },
         { urls: 'stun:stun.cloudflare.com:3478' },
 
-        // TURN Relay Servers (Essential for connections across different networks, cellular data, firewalls, and symmetric NATs)
+        // TURN Relay Servers (for media streams across different networks)
         { urls: 'stun:openrelay.metered.ca:80' },
         {
           urls: 'turn:openrelay.metered.ca:80',
@@ -105,9 +228,6 @@ export class RTC {
         config: { iceServers, iceTransportPolicy: 'all' }
       };
 
-      this._cloudOpts = cloudOpts;
-      this._selfHostedOpts = selfHostedOpts;
-
       const attempts = [
         { opts: selfHostedOpts, id: customId, name: 'Self-Hosted /peerjs' },
         { opts: cloudOpts, id: customId, name: 'PeerJS Cloud Fallback' }
@@ -117,8 +237,15 @@ export class RTC {
 
       const tryNextAttempt = () => {
         if (currentAttemptIndex >= attempts.length) {
-          this.cb.onStatus('error', 'All signaling server attempts failed');
-          return reject(new Error('Could not connect to any signaling server'));
+          // PeerJS signaling failed, but Socket.IO relay still works for data!
+          console.warn('[RTC Signaling] All PeerJS signaling servers failed. Using Socket.IO relay only (no media streams).');
+          this.id = customId;
+          this.cb.onStatus('ready', customId);
+          if (this.socket && this._socketConnected) {
+            this._joinSocketRoom(customId);
+          }
+          resolve(customId);
+          return;
         }
 
         const config = attempts[currentAttemptIndex];
@@ -134,14 +261,25 @@ export class RTC {
           this._initOpts = config;
 
           let resolved = false;
+          const sigTimeout = setTimeout(() => {
+            if (!resolved) {
+              console.warn(`[RTC Signaling] ${config.name} timed out after 8 seconds`);
+              tryNextAttempt();
+            }
+          }, 8000);
 
           this.peer.on('open', id => {
             if (resolved) return;
             resolved = true;
+            clearTimeout(sigTimeout);
             this.id = id;
             this._destroyed = false;
             console.log(`[RTC Signaling] Connected via ${config.name}! Room ID: ${id}`);
             this.cb.onStatus('ready', id);
+
+            // Join Socket.IO room with the same room ID
+            this._joinSocketRoom(id);
+
             resolve(id);
           });
 
@@ -151,35 +289,26 @@ export class RTC {
           this.peer.on('error', e => {
             console.warn(`[RTC Signaling Warning] ${config.name} error:`, e.type, e.message);
             if (e.type === 'peer-unavailable') {
-              // If connecting to a target peer and got peer-unavailable on primary server, try fallback cloud server
-              if (this._targetPeerId && !this._triedCloudFallback) {
-                this._triedCloudFallback = true;
-                console.log('[RTC Signaling] Host not on current server, trying cloud signaling server fallback...');
-                this._switchServerAndConnect(this._targetPeerId, cloudOpts);
-                return;
-              }
-              if (this._targetPeerId && this._peerUnavailableRetries < 2) {
-                this._peerUnavailableRetries++;
-                console.log(`[RTC Signaling] Retrying connection to host ${this._targetPeerId} (Attempt ${this._peerUnavailableRetries}/2)...`);
-                setTimeout(() => this.connect(this._targetPeerId), 2000);
-                return;
-              }
-              this.cb.onStatus('error', 'Room ID not found or host is offline. Verify Room ID.');
+              // Don't show error — Socket.IO handles the actual data connection
+              console.log('[RTC] Peer not found on PeerJS signaling (media-only). Data relay via Socket.IO still active.');
               return;
             }
             if (e.type === 'unavailable-id') {
               console.warn(`[RTC Signaling Warning] ID ${config.id} in use, trying auto-generated ID...`);
               config.id = null;
-              if (!resolved) setTimeout(tryNextAttempt, 500);
+              if (!resolved) {
+                clearTimeout(sigTimeout);
+                setTimeout(tryNextAttempt, 500);
+              }
               return;
             }
             if (!resolved) {
+              clearTimeout(sigTimeout);
               setTimeout(tryNextAttempt, 1500);
             }
           });
 
           this.peer.on('disconnected', () => {
-            this.cb.onStatus('disconnected');
             if (this.peer && !this.peer.destroyed) {
               try { this.peer.reconnect(); } catch (err) {}
             }
@@ -194,73 +323,46 @@ export class RTC {
     });
   }
 
-  // Switch signaling server target (e.g. from self-hosted to cloud fallback) and join
-  async _switchServerAndConnect(targetId, serverOpts) {
-    try {
-      this.cb.onStatus('connecting');
-      if (this.peer && !this.peer.destroyed) {
-        try { this.peer.destroy(); } catch (e) {}
-      }
-      this.peer = new Peer(serverOpts);
-      this.peer.on('open', id => {
-        this.id = id;
-        console.log(`[RTC Signaling] Switched signaling server successfully! Room ID: ${id}`);
-        this.connect(targetId);
-      });
-      this.peer.on('connection', c => this._handleConn(c));
-      this.peer.on('call', c => this._handleCall(c));
-      this.peer.on('error', e => {
-        console.warn('[RTC Fallback Signaling Error]', e.type, e.message);
-        this.cb.onStatus('error', 'Host is offline or Room ID is invalid.');
-      });
-    } catch (e) {
-      console.error('[RTC Switch Server Exception]', e);
-      this.cb.onStatus('error', 'Could not reach signaling server');
-    }
-  }
-
   connect(targetId) {
     if (!targetId) return;
-    if (this._targetPeerId !== targetId) {
-      this._targetPeerId = targetId;
-      this._triedCloudFallback = false;
-      this._peerUnavailableRetries = 0;
-    }
+    this._targetPeerId = targetId;
     if (!this._isReconnecting) {
       this._reconnectAttempts = 0;
     }
 
-    if (!this.peer) {
-      console.warn('[RTC Connect] Peer instance not initialized');
-      this.cb.onStatus('error', 'Signaling server not ready');
-      return;
-    }
-
-    if (this.peer.destroyed) {
-      console.warn('[RTC Connect] Peer instance destroyed, re-initializing...');
-      this._reinitAndConnect(targetId);
-      return;
-    }
-
-    if (!this.peer.open) {
-      console.log('[RTC Connect] Peer connection pending open... Queuing join to:', targetId);
-      this.cb.onStatus('connecting');
-      this.peer.once('open', () => this.connect(targetId));
-      return;
-    }
-
-    console.log(`[RTC Connect] Initiating WebRTC data connection to room host: ${targetId}...`);
+    console.log(`[RTC Connect] Joining room: ${targetId}`);
     this.cb.onStatus('connecting');
 
-    try {
-      if (this.conn) {
-        try { this.conn.close(); } catch (e) {}
+    // PRIMARY: Join room via Socket.IO relay (always works across networks)
+    if (this.socket && this._socketConnected) {
+      this._joinSocketRoom(targetId);
+    } else if (this.socket) {
+      // Socket not connected yet, queue the join
+      this.socket.once('connect', () => {
+        this._joinSocketRoom(targetId);
+      });
+    }
+
+    // SECONDARY: Also attempt PeerJS WebRTC data connection (for low-latency + media)
+    if (this.peer && !this.peer.destroyed && this.peer.open) {
+      try {
+        if (this.conn) {
+          try { this.conn.close(); } catch (e) {}
+        }
+        const c = this.peer.connect(targetId, { reliable: true, serialization: 'json' });
+        this._handleConn(c, targetId);
+      } catch (err) {
+        console.warn('[RTC Connect] WebRTC P2P attempt failed (Socket.IO relay active):', err.message);
       }
-      const c = this.peer.connect(targetId, { reliable: true, serialization: 'json' });
-      this._handleConn(c, targetId);
-    } catch (err) {
-      console.error('[RTC Connect Error]', err);
-      this.cb.onStatus('error', `Could not connect to room: ${err.message}`);
+    } else if (this.peer && !this.peer.destroyed) {
+      this.peer.once('open', () => {
+        try {
+          const c = this.peer.connect(targetId, { reliable: true, serialization: 'json' });
+          this._handleConn(c, targetId);
+        } catch (err) {
+          console.warn('[RTC Connect] WebRTC P2P attempt failed (Socket.IO relay active):', err.message);
+        }
+      });
     }
   }
 
@@ -312,17 +414,23 @@ export class RTC {
     this._lastHeartbeat = Date.now();
 
     this._heartbeatInterval = setInterval(() => {
+      // Send heartbeat via Socket.IO (always works)
+      if (this.socket && this._socketConnected && this._socketRoomJoined) {
+        this.socket.emit('room-data', { type: '__HEARTBEAT__', payload: { ts: Date.now() }, ts: Date.now() });
+      }
+      // Also send via WebRTC if available
       if (this.conn?.open) {
-        this.send('__HEARTBEAT__', { ts: Date.now() });
-        this._heartbeatMissed++;
+        try { this.conn.send({ type: '__HEARTBEAT__', payload: { ts: Date.now() }, ts: Date.now() }); } catch (e) {}
+      }
 
-        if (this._heartbeatMissed >= this._maxMissedHeartbeats) {
-          console.warn('[RTC Heartbeat] Partner unresponsive, triggering reconnection...');
-          this._stopHeartbeat();
+      this._heartbeatMissed++;
+      if (this._heartbeatMissed >= this._maxMissedHeartbeats) {
+        console.warn('[RTC Heartbeat] Partner unresponsive');
+        this._stopHeartbeat();
+        // Don't trigger full reconnect if Socket.IO is still connected
+        if (!this._socketConnected) {
           this._scheduleReconnect();
         }
-      } else {
-        this._stopHeartbeat();
       }
     }, 5000);
   }
@@ -344,14 +452,14 @@ export class RTC {
     this.conn = c;
     if (targetId) this._targetPeerId = targetId;
 
-    // Timeout safety net: If connection stays stuck connecting for 25 seconds (allows TURN relay discovery across cellular & different networks)
+    // Timeout for WebRTC data connection (not critical — Socket.IO handles data)
     const connTimeout = setTimeout(() => {
       if (c && !c.open) {
-        console.warn('[RTC DataConnection Timeout] Connection attempt timed out');
-        this.cb.onStatus('error', `Connection timed out to ${targetId || c.peer}. Host may be offline or unreachable on network.`);
+        console.warn('[RTC DataConnection Timeout] WebRTC P2P data channel timed out (Socket.IO relay still active)');
         try { c.close(); } catch (e) {}
+        // Don't show error to user — Socket.IO handles connectivity
       }
-    }, 25000);
+    }, 15000);
 
     c.on('open', () => {
       clearTimeout(connTimeout);
@@ -359,9 +467,14 @@ export class RTC {
       this._targetPeerId = c.peer;
       this._reconnectAttempts = 0;
       this._isReconnecting = false;
-      console.log('[RTC DataConnection Open] Connected to peer:', c.peer);
-      this.cb.onConnect(c.peer);
-      this.cb.onStatus('connected');
+      console.log('[RTC DataConnection Open] WebRTC P2P data channel established:', c.peer);
+
+      // If Socket.IO hasn't connected yet, fire the onConnect from here
+      if (!this._socketRoomJoined) {
+        this.cb.onConnect(c.peer);
+        this.cb.onStatus('connected');
+      }
+
       this._startHeartbeat();
       this._startStatsMonitor();
 
@@ -386,32 +499,34 @@ export class RTC {
       }
       if (d && d.type === '__HEARTBEAT_ACK__') {
         this._onHeartbeatReceived();
-        // Calculate RTT
         if (d.payload?.ts) {
           this._latestStats.rtt = Date.now() - (d.ts || d.payload.ts);
         }
         return;
       }
+
+      // Deduplicate: skip if already received via Socket.IO
+      if (d && d._msgId && this._recentMsgIds.has(d._msgId)) return;
+      if (d && d._msgId) {
+        this._recentMsgIds.add(d._msgId);
+        setTimeout(() => this._recentMsgIds.delete(d._msgId), 5000);
+      }
+
       this.cb.onData(d);
     });
 
     c.on('close', () => {
       clearTimeout(connTimeout);
       this.conns.delete(c.peer);
-      this._stopHeartbeat();
       this._stopStatsMonitor();
-      this.cb.onDisconnect();
-      this.cb.onStatus('disconnected');
-      // Auto-reconnect if we had a target peer
-      if (this._targetPeerId && !this._destroyed) {
-        this._scheduleReconnect();
-      }
+      console.log('[RTC DataConnection] WebRTC P2P channel closed');
+      // Don't fire onDisconnect — Socket.IO handles the actual room presence
     });
 
     c.on('error', err => {
       clearTimeout(connTimeout);
-      console.error('[Data Connection Error]', err);
-      this.cb.onStatus('error', `Room join error: ${err.type || err.message || 'Peer connection failed'}`);
+      console.warn('[Data Connection Error] WebRTC P2P failed (Socket.IO relay active):', err.type || err.message);
+      // Don't show error to user — Socket.IO handles connectivity
     });
   }
 
@@ -836,8 +951,17 @@ export class RTC {
     this.cb.onCam(null);
   }
 
+  // ─── Send data via BOTH Socket.IO (guaranteed) and WebRTC (low-latency bonus) ───
   send(type, payload) {
-    const packet = { type, payload, ts: Date.now() };
+    const _msgId = `${type}-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+    const packet = { type, payload, ts: Date.now(), _msgId };
+
+    // PRIMARY: Send via Socket.IO relay (always works across networks)
+    if (this.socket && this._socketConnected && this._socketRoomJoined) {
+      try { this.socket.emit('room-data', packet); } catch (e) {}
+    }
+
+    // SECONDARY: Also send via WebRTC data channel if available (lower latency)
     if (this.conn?.open) {
       try { this.conn.send(packet); } catch (e) {}
     }
@@ -853,6 +977,10 @@ export class RTC {
     this._stopHeartbeat();
     this._stopStatsMonitor();
     clearTimeout(this._reconnectTimer);
+    if (this.socket) {
+      try { this.socket.disconnect(); } catch (e) {}
+      this.socket = null;
+    }
     if (this.peer && !this.peer.destroyed) {
       try { this.peer.destroy(); } catch (e) {}
     }
