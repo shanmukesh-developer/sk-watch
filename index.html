@@ -15,22 +15,41 @@
 </head>
 <body>
 
-  <!-- Epic Baahubali-Style Intro Overlay -->
+  <!-- Grand Classic Animated Cinema Intro Overlay -->
   <div class="epic-intro" id="epicIntro">
+    <div class="intro-curtain curtain-left" id="curtainLeft"></div>
+    <div class="intro-curtain curtain-right" id="curtainRight"></div>
+    <div class="film-grain"></div>
     <canvas id="starsCanvas"></canvas>
     <div class="intro-content">
-      <div class="intro-badge">✨ 4K PRIVATE THEATER EXPERIENCE</div>
-      <h1 class="intro-title">
-        <span class="gold-text">SHANMUKH & KAVYA'S</span><br>PRIVATE THEATER
-      </h1>
-      <p class="intro-tagline">Watch Movies Together. Feel Every Emotion Live.</p>
-      <p class="intro-sub">Ultra HD Video • Studio Noise Cancellation • Live Face Overlay • Zero Lag</p>
+      <div class="film-countdown-wrap">
+        <div class="intro-badge">✨ GRAND CLASSIC CINEMA EXPERIENCE</div>
+        <div class="film-countdown-badge" id="countdownBadge">
+          <span class="reel-crosshair"></span>
+          <span class="countdown-val" id="countdownVal">3</span>
+        </div>
+      </div>
+
+      <div class="title-wrap">
+        <span class="classic-laurel left">🏆</span>
+        <h1 class="intro-title">
+          <span class="gold-text">SHANMUKH & KAVYA'S</span><br>
+          <span class="classic-sub-title">PRIVATE THEATER</span>
+        </h1>
+        <span class="classic-laurel right">🏆</span>
+      </div>
+
+      <p class="intro-tagline">🍿 Watch Movies Together • Feel Every Emotion Live 🍿</p>
+      <p class="intro-sub">Ultra HD Streams • Studio Noise Gate • Live Reaction Cam • Zero Lag</p>
+
       <div class="intro-action-group">
         <button class="btn-epic" id="enterTheaterBtn">
+          <span class="btn-star">★</span>
           <span>ENTER THEATER</span>
-          <i data-lucide="play" style="width:20px;height:20px"></i>
+          <i data-lucide="clapperboard" style="width:20px;height:20px"></i>
         </button>
       </div>
+
       <div class="intro-features">
         <div class="feat-card">
           <i data-lucide="sparkles"></i>
@@ -83,6 +102,7 @@
       </div>
 
       <div class="header-right">
+        <button class="btn-icon" id="layoutToggleBtn" title="Toggle Side-by-Side / PIP Layout"><i data-lucide="layout-grid" style="width:16px;height:16px"></i></button>
         <button class="btn-ghost" id="openRoomBtn"><i data-lucide="link" style="width:16px;height:16px"></i> <span class="hide-mobile">Room</span></button>
         <button class="btn-icon" id="theaterBtn" title="Theater mode"><i data-lucide="maximize-2" style="width:16px;height:16px"></i></button>
       </div>
@@ -154,6 +174,7 @@
         <div class="side-tabs">
           <button class="side-tab active" data-panel="chatPanel"><i data-lucide="message-circle" style="width:14px;height:14px"></i> Chat</button>
           <button class="side-tab" data-panel="audioPanel"><i data-lucide="sliders" style="width:14px;height:14px"></i> Audio</button>
+          <button class="side-tab" data-panel="soundPanel"><i data-lucide="volume-2" style="width:14px;height:14px"></i> FX</button>
         </div>
 
         <!-- Chat Panel -->
@@ -180,6 +201,36 @@
             <div class="meter-wrap">
               <span>Mic Level</span>
               <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cinema Soundboard Panel -->
+        <div class="side-panel" id="soundPanel">
+          <div class="soundboard-wrap">
+            <h4>🍿 Soundboard FX</h4>
+            <p class="soundboard-sub">Live synchronized audio reactions</p>
+            <div class="soundboard-grid">
+              <button class="fx-card" data-fx="popcorn">
+                <span class="fx-emoji">🍿</span>
+                <span class="fx-title">Popcorn</span>
+              </button>
+              <button class="fx-card" data-fx="applause">
+                <span class="fx-emoji">👏</span>
+                <span class="fx-title">Applause</span>
+              </button>
+              <button class="fx-card" data-fx="drumroll">
+                <span class="fx-emoji">🥁</span>
+                <span class="fx-title">Drumroll</span>
+              </button>
+              <button class="fx-card" data-fx="fanfare">
+                <span class="fx-emoji">🎺</span>
+                <span class="fx-title">Fanfare</span>
+              </button>
+              <button class="fx-card" data-fx="cheer">
+                <span class="fx-emoji">🎉</span>
+                <span class="fx-title">Cheer</span>
+              </button>
             </div>
           </div>
         </div>

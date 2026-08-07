@@ -1,40 +1,89 @@
 import { RTC } from './webrtc.js';
+import { SoundFXEngine } from './soundboard.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   if (window.lucide) lucide.createIcons();
 
-  // ─── Epic Intro Particle Canvas ───
+  const sfx = new SoundFXEngine();
+
+  // ─── Grand Classic Cinema Animated Canvas & Spotlight Engine ───
   const epicIntro = document.getElementById('epicIntro');
   const enterTheaterBtn = document.getElementById('enterTheaterBtn');
   const starsCanvas = document.getElementById('starsCanvas');
+  const countdownVal = document.getElementById('countdownVal');
 
   if (starsCanvas) {
     const ctx = starsCanvas.getContext('2d');
     let width = starsCanvas.width = window.innerWidth;
     let height = starsCanvas.height = window.innerHeight;
-    const stars = Array.from({ length: 90 }, () => ({
+    let angle = 0;
+
+    // Ambient floating gold dust motes
+    const particles = Array.from({ length: 120 }, () => ({
       x: Math.random() * width,
       y: Math.random() * height,
-      r: Math.random() * 2 + 0.5,
+      r: Math.random() * 2.2 + 0.6,
       alpha: Math.random(),
-      speed: Math.random() * 0.02 + 0.005
+      speedY: Math.random() * 0.4 + 0.1,
+      speedAlpha: Math.random() * 0.015 + 0.005
     }));
 
-    function drawStars() {
+    function drawClassicCinemaIntro() {
       ctx.clearRect(0, 0, width, height);
-      stars.forEach(s => {
-        s.alpha += s.speed;
-        if (s.alpha > 1 || s.alpha < 0) s.speed = -s.speed;
-        ctx.fillStyle = `rgba(255, 215, 0, ${Math.abs(s.alpha)})`;
+      angle += 0.008;
+
+      // 1. Dual Sweeping Golden Cinema Spotlights
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      
+      // Left Spotlight
+      const spotLeftX = width * 0.2 + Math.sin(angle) * 120;
+      const gradLeft = ctx.createRadialGradient(spotLeftX, height, 50, spotLeftX, 0, width * 0.6);
+      gradLeft.addColorStop(0, 'rgba(255, 215, 0, 0.18)');
+      gradLeft.addColorStop(0.5, 'rgba(255, 170, 0, 0.06)');
+      gradLeft.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = gradLeft;
+      ctx.beginPath();
+      ctx.moveTo(spotLeftX, height);
+      ctx.lineTo(spotLeftX - width * 0.4, 0);
+      ctx.lineTo(spotLeftX + width * 0.4, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      // Right Spotlight
+      const spotRightX = width * 0.8 - Math.sin(angle * 1.2) * 120;
+      const gradRight = ctx.createRadialGradient(spotRightX, height, 50, spotRightX, 0, width * 0.6);
+      gradRight.addColorStop(0, 'rgba(0, 212, 255, 0.15)');
+      gradRight.addColorStop(0.5, 'rgba(168, 85, 247, 0.05)');
+      gradRight.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = gradRight;
+      ctx.beginPath();
+      ctx.moveTo(spotRightX, height);
+      ctx.lineTo(spotRightX - width * 0.4, 0);
+      ctx.lineTo(spotRightX + width * 0.4, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+
+      // 2. Floating Golden Star Dust Motes
+      particles.forEach(p => {
+        p.y -= p.speedY;
+        if (p.y < 0) { p.y = height; p.x = Math.random() * width; }
+        p.alpha += p.speedAlpha;
+        if (p.alpha > 1 || p.alpha < 0) p.speedAlpha = -p.speedAlpha;
+
+        ctx.fillStyle = `rgba(255, 215, 0, ${Math.abs(p.alpha) * 0.85})`;
         ctx.beginPath();
-        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fill();
       });
+
       if (epicIntro && !epicIntro.classList.contains('hidden')) {
-        requestAnimationFrame(drawStars);
+        requestAnimationFrame(drawClassicCinemaIntro);
       }
     }
-    drawStars();
+    drawClassicCinemaIntro();
 
     window.addEventListener('resize', () => {
       width = starsCanvas.width = window.innerWidth;
@@ -42,12 +91,46 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Vintage Film Reel Countdown Loop (3 -> 2 -> 1 -> 🎬)
+  if (countdownVal) {
+    const ticks = ['3', '2', '1', '🎬'];
+    let idx = 0;
+    setInterval(() => {
+      idx = (idx + 1) % ticks.length;
+      countdownVal.textContent = ticks[idx];
+    }, 1000);
+  }
+
+  // Curtain Open Transition & Entrance Fanfare
   if (enterTheaterBtn && epicIntro) {
     enterTheaterBtn.addEventListener('click', () => {
-      epicIntro.classList.add('hidden');
-      setTimeout(() => epicIntro.remove(), 700);
-      ping(); // Play entrance sound chime
+      epicIntro.classList.add('curtains-open');
+      playCinemaEntranceFanfare();
+      setTimeout(() => {
+        epicIntro.classList.add('hidden');
+        setTimeout(() => epicIntro.remove(), 1000);
+      }, 1100);
     });
+  }
+
+  function playCinemaEntranceFanfare() {
+    try {
+      const c = new (window.AudioContext || window.webkitAudioContext)();
+      const notes = [440, 554.37, 659.25, 880]; // A4, C#5, E5, A5 classic chord chime
+      notes.forEach((freq, i) => {
+        const o = c.createOscillator();
+        const g = c.createGain();
+        o.type = 'triangle';
+        o.frequency.value = freq;
+        g.gain.setValueAtTime(0.01, c.currentTime + i * 0.08);
+        g.gain.exponentialRampToValueAtTime(0.08, c.currentTime + i * 0.08 + 0.05);
+        g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + i * 0.08 + 0.8);
+        o.connect(g);
+        g.connect(c.destination);
+        o.start(c.currentTime + i * 0.08);
+        o.stop(c.currentTime + i * 0.08 + 0.8);
+      });
+    } catch {}
   }
 
   // ─── Auto-Ping Keep Alive (Client-side ping every 13 minutes) ───
@@ -317,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ─── Local Video Sync ───
-  fileIn.addEventListener('change', e => {
+  fileIn.addEventListener('change', async e => {
     const f = e.target.files[0];
     if (!f) return;
     const objectUrl = URL.createObjectURL(f);
@@ -336,15 +419,26 @@ document.addEventListener('DOMContentLoaded', () => {
       seekBar.value = 0;
     }, { once: true });
 
-    localVideo.play().then(() => {
+    try {
+      await localVideo.play();
       playPauseBtn.innerHTML = `<i data-lucide="pause" style="width:18px;height:18px"></i>`;
       if (window.lucide) lucide.createIcons();
-    }).catch(err => {
-      console.log('Local video play click required', err);
-    });
 
-    sysMsg(`🎬 Loaded: ${f.name}`);
-    toast(`Loaded ${f.name}`, 'ok');
+      // Stream local file live to partner via WebRTC captureStream
+      const fileStream = localVideo.captureStream ? localVideo.captureStream() : (localVideo.mozCaptureStream ? localVideo.mozCaptureStream() : null);
+      if (fileStream) {
+        rtc.shareCustomStream(fileStream);
+        sysMsg(`🎬 Sharing local video stream: ${f.name}`);
+        toast(`Streaming ${f.name} live to partner!`, 'ok');
+      } else {
+        sysMsg(`🎬 Loaded: ${f.name}`);
+        toast(`Loaded ${f.name}`, 'ok');
+      }
+    } catch (err) {
+      console.log('Local video play click required', err);
+      sysMsg(`🎬 Loaded: ${f.name}`);
+      toast(`Loaded ${f.name}`, 'ok');
+    }
   });
 
   // ─── Play/Pause ───
@@ -487,7 +581,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   requestAnimationFrame(tickMeter);
 
-  // ─── Emojis ───
+  // ─── Emojis & Soundboard FX ───
   document.querySelectorAll('.emoji-btn').forEach(b => {
     b.addEventListener('click', () => {
       const e = b.dataset.e;
@@ -495,6 +589,16 @@ document.addEventListener('DOMContentLoaded', () => {
       rtc.send('EMOJI', { e });
       b.classList.add('pop');
       setTimeout(() => b.classList.remove('pop'), 350);
+    });
+  });
+
+  document.querySelectorAll('.fx-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const fx = card.dataset.fx;
+      sfx.play(fx);
+      rtc.send('SOUND_FX', { fx });
+      card.classList.add('pop');
+      setTimeout(() => card.classList.remove('pop'), 350);
     });
   });
 
@@ -541,18 +645,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ─── Incoming Data ───
   function handleData(d) {
+    if (!d || typeof d !== 'object' || !d.type) return;
     switch (d.type) {
       case 'SYNC':
-        if (syncMode) {
-          if (d.payload.a === 'play') { localVideo.currentTime = d.payload.t; localVideo.play(); }
+        if (syncMode && d.payload) {
+          if (d.payload.a === 'play') { localVideo.currentTime = d.payload.t; localVideo.play().catch(()=>{}); }
           else if (d.payload.a === 'pause') { localVideo.currentTime = d.payload.t; localVideo.pause(); }
           else if (d.payload.a === 'seek') { localVideo.currentTime = d.payload.t; }
         }
         break;
-      case 'EMOJI': spawnEmoji(d.payload.e, 'Partner'); break;
+      case 'EMOJI':
+        if (d.payload?.e) spawnEmoji(d.payload.e, 'Partner');
+        break;
+      case 'SOUND_FX':
+        if (d.payload?.fx) {
+          sfx.play(d.payload.fx);
+          const fxLabels = { popcorn: '🍿 Popcorn', applause: '👏 Applause', drumroll: '🥁 Drumroll', fanfare: '🎺 Fanfare', cheer: '🎉 Cheer' };
+          toast(`Partner played ${fxLabels[d.payload.fx] || d.payload.fx}!`, 'info');
+        }
+        break;
       case 'CHAT':
-        addMsg('Partner', d.payload.t, false);
-        ping();
+        if (d.payload?.t) {
+          addMsg('Partner', d.payload.t, false);
+          ping();
+        }
         break;
     }
   }
@@ -591,14 +707,35 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'f': fsBtn.click(); break;
       case 't': theaterBtn.click(); break;
       case 'c': camBtn.click(); break;
+      case 'l': layoutToggleBtn?.click(); break;
       case 'escape': roomModal.classList.remove('open'); break;
     }
   });
+
+  // ─── Layout Toggle (PIP vs Side-by-Side) ───
+  const layoutToggleBtn = $('layoutToggleBtn');
+  let isSideBySide = false;
+
+  if (layoutToggleBtn) {
+    layoutToggleBtn.addEventListener('click', () => {
+      isSideBySide = !isSideBySide;
+      const screenEl = $('screen');
+      screenEl.classList.toggle('side-by-side', isSideBySide);
+      layoutToggleBtn.classList.toggle('active', isSideBySide);
+      if (!isSideBySide) {
+        pip.style.top = '';
+        pip.style.left = '';
+        pip.style.right = '';
+      }
+      toast(isSideBySide ? 'Side-by-Side View active' : 'Picture-in-Picture mode active', 'info');
+    });
+  }
 
   // ─── Draggable PIP (mouse + touch) ───
   let dragX, dragY;
   function onDragStart(x, y) { dragX = x; dragY = y; }
   function onDragMove(x, y) {
+    if (isSideBySide) return;
     const dx = x - dragX, dy = y - dragY;
     dragX = x; dragY = y;
     const parent = pip.parentElement;

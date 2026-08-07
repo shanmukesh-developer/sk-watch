@@ -146,6 +146,9 @@ export class RTC {
   }
 
   async shareScreen() {
+    if (this.screenStream) {
+      this.stopScreen();
+    }
     const s = await navigator.mediaDevices.getDisplayMedia({
       video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } },
       audio: {
@@ -158,6 +161,17 @@ export class RTC {
     this.screenStream = s;
     s.getVideoTracks()[0].onended = () => this.stopScreen();
 
+    if (this.conn?.open) {
+      this._call(this.conn.peer, s, 'screen');
+    }
+    return s;
+  }
+
+  shareCustomStream(s) {
+    if (this.screenStream) {
+      this.stopScreen();
+    }
+    this.screenStream = s;
     if (this.conn?.open) {
       this._call(this.conn.peer, s, 'screen');
     }
