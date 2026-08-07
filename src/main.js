@@ -6,130 +6,88 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const sfx = new SoundFXEngine();
 
-  // ─── Grand Classic Cinema Animated Canvas & Spotlight Engine ───
-  const epicIntro = document.getElementById('epicIntro');
+  // ─── Minimalist High-Tech Sci-Fi Canvas & Aperture Shutter Engine ───
+  const cyberIntro = document.getElementById('cyberIntro');
   const enterTheaterBtn = document.getElementById('enterTheaterBtn');
-  const starsCanvas = document.getElementById('starsCanvas');
-  const countdownVal = document.getElementById('countdownVal');
+  const techCanvas = document.getElementById('techCanvas');
 
-  if (starsCanvas) {
-    const ctx = starsCanvas.getContext('2d');
-    let width = starsCanvas.width = window.innerWidth;
-    let height = starsCanvas.height = window.innerHeight;
-    let angle = 0;
+  if (techCanvas) {
+    const ctx = techCanvas.getContext('2d');
+    let width = techCanvas.width = window.innerWidth;
+    let height = techCanvas.height = window.innerHeight;
+    let scanY = 0;
 
-    // Ambient floating gold dust motes
-    const particles = Array.from({ length: 120 }, () => ({
-      x: Math.random() * width,
-      y: Math.random() * height,
-      r: Math.random() * 2.2 + 0.6,
-      alpha: Math.random(),
-      speedY: Math.random() * 0.4 + 0.1,
-      speedAlpha: Math.random() * 0.015 + 0.005
-    }));
-
-    function drawClassicCinemaIntro() {
+    function drawTechGrid() {
       ctx.clearRect(0, 0, width, height);
-      angle += 0.008;
 
-      // 1. Dual Sweeping Golden Cinema Spotlights
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-      
-      // Left Spotlight
-      const spotLeftX = width * 0.2 + Math.sin(angle) * 120;
-      const gradLeft = ctx.createRadialGradient(spotLeftX, height, 50, spotLeftX, 0, width * 0.6);
-      gradLeft.addColorStop(0, 'rgba(255, 215, 0, 0.18)');
-      gradLeft.addColorStop(0.5, 'rgba(255, 170, 0, 0.06)');
-      gradLeft.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = gradLeft;
-      ctx.beginPath();
-      ctx.moveTo(spotLeftX, height);
-      ctx.lineTo(spotLeftX - width * 0.4, 0);
-      ctx.lineTo(spotLeftX + width * 0.4, 0);
-      ctx.closePath();
-      ctx.fill();
+      // Fine minimal cyan tech grid
+      ctx.strokeStyle = 'rgba(0, 212, 255, 0.04)';
+      ctx.lineWidth = 1;
 
-      // Right Spotlight
-      const spotRightX = width * 0.8 - Math.sin(angle * 1.2) * 120;
-      const gradRight = ctx.createRadialGradient(spotRightX, height, 50, spotRightX, 0, width * 0.6);
-      gradRight.addColorStop(0, 'rgba(0, 212, 255, 0.15)');
-      gradRight.addColorStop(0.5, 'rgba(168, 85, 247, 0.05)');
-      gradRight.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = gradRight;
-      ctx.beginPath();
-      ctx.moveTo(spotRightX, height);
-      ctx.lineTo(spotRightX - width * 0.4, 0);
-      ctx.lineTo(spotRightX + width * 0.4, 0);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.restore();
-
-      // 2. Floating Golden Star Dust Motes
-      particles.forEach(p => {
-        p.y -= p.speedY;
-        if (p.y < 0) { p.y = height; p.x = Math.random() * width; }
-        p.alpha += p.speedAlpha;
-        if (p.alpha > 1 || p.alpha < 0) p.speedAlpha = -p.speedAlpha;
-
-        ctx.fillStyle = `rgba(255, 215, 0, ${Math.abs(p.alpha) * 0.85})`;
+      const gridSize = 40;
+      for (let x = 0; x < width; x += gridSize) {
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fill();
-      });
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < height; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
 
-      if (epicIntro && !epicIntro.classList.contains('hidden')) {
-        requestAnimationFrame(drawClassicCinemaIntro);
+      // Scanning laser horizon line
+      scanY = (scanY + 1.5) % height;
+      const grad = ctx.createLinearGradient(0, scanY - 10, 0, scanY + 10);
+      grad.addColorStop(0, 'rgba(0, 212, 255, 0)');
+      grad.addColorStop(0.5, 'rgba(0, 212, 255, 0.12)');
+      grad.addColorStop(1, 'rgba(0, 212, 255, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, scanY - 10, width, 20);
+
+      if (cyberIntro && !cyberIntro.classList.contains('hidden')) {
+        requestAnimationFrame(drawTechGrid);
       }
     }
-    drawClassicCinemaIntro();
+    drawTechGrid();
 
     window.addEventListener('resize', () => {
-      width = starsCanvas.width = window.innerWidth;
-      height = starsCanvas.height = window.innerHeight;
+      width = techCanvas.width = window.innerWidth;
+      height = techCanvas.height = window.innerHeight;
     });
   }
 
-  // Vintage Film Reel Countdown Loop (3 -> 2 -> 1 -> 🎬)
-  if (countdownVal) {
-    const ticks = ['3', '2', '1', '🎬'];
-    let idx = 0;
-    setInterval(() => {
-      idx = (idx + 1) % ticks.length;
-      countdownVal.textContent = ticks[idx];
-    }, 1000);
-  }
-
-  // Curtain Open Transition & Entrance Fanfare
-  if (enterTheaterBtn && epicIntro) {
+  // Mechanical Iris Aperture Shutter Opening Sound & Transition
+  if (enterTheaterBtn && cyberIntro) {
     enterTheaterBtn.addEventListener('click', () => {
-      epicIntro.classList.add('curtains-open');
-      playCinemaEntranceFanfare();
+      cyberIntro.classList.add('aperture-open');
+      playFuturisticEnergyHum();
       setTimeout(() => {
-        epicIntro.classList.add('hidden');
-        setTimeout(() => epicIntro.remove(), 1000);
-      }, 1100);
+        cyberIntro.classList.add('hidden');
+        setTimeout(() => cyberIntro.remove(), 900);
+      }, 950);
     });
   }
 
-  function playCinemaEntranceFanfare() {
+  function playFuturisticEnergyHum() {
     try {
       const c = new (window.AudioContext || window.webkitAudioContext)();
-      const notes = [440, 554.37, 659.25, 880]; // A4, C#5, E5, A5 classic chord chime
-      notes.forEach((freq, i) => {
-        const o = c.createOscillator();
-        const g = c.createGain();
-        o.type = 'triangle';
-        o.frequency.value = freq;
-        g.gain.setValueAtTime(0.01, c.currentTime + i * 0.08);
-        g.gain.exponentialRampToValueAtTime(0.08, c.currentTime + i * 0.08 + 0.05);
-        g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + i * 0.08 + 0.8);
-        o.connect(g);
-        g.connect(c.destination);
-        o.start(c.currentTime + i * 0.08);
-        o.stop(c.currentTime + i * 0.08 + 0.8);
-      });
+      const o = c.createOscillator();
+      const g = c.createGain();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(120, c.currentTime);
+      o.frequency.exponentialRampToValueAtTime(880, c.currentTime + 0.6);
+
+      g.gain.setValueAtTime(0.01, c.currentTime);
+      g.gain.linearRampToValueAtTime(0.12, c.currentTime + 0.3);
+      g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.8);
+
+      o.connect(g);
+      g.connect(c.destination);
+      o.start();
+      o.stop(c.currentTime + 0.8);
     } catch {}
   }
 
