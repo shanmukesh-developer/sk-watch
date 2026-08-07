@@ -63,7 +63,7 @@
           <button class="sm-btn" id="copyIdBtn" title="Copy Room ID"><i data-lucide="copy" style="width:14px;height:14px"></i></button>
         </div>
         <!-- Connection Quality Indicator -->
-        <div class="quality-indicator" id="qualityIndicator" style="display:none" title="Connection Quality">
+        <div class="quality-indicator" id="qualityIndicator" style="display:none" title="Click for Network Diagnostics">
           <div class="signal-bars" id="signalBars">
             <span class="bar bar-1"></span>
             <span class="bar bar-2"></span>
@@ -85,6 +85,7 @@
           <button class="btn-icon" id="viewStageBtn" title="Spotlight Stage View"><i data-lucide="layout-template" style="width:16px;height:16px"></i></button>
           <button class="btn-icon" id="viewPipBtn" title="Picture-in-Picture Mode"><i data-lucide="square" style="width:16px;height:16px"></i></button>
         </div>
+        <button class="btn-icon hide-mobile" id="diagnosticsBtn" title="Network & WebRTC Diagnostics"><i data-lucide="activity" style="width:16px;height:16px"></i></button>
         <button class="btn-ghost" id="openRoomBtn"><i data-lucide="link" style="width:16px;height:16px"></i> <span class="hide-mobile">Room</span></button>
         <button class="btn-icon" id="theaterBtn" title="Theater mode"><i data-lucide="maximize-2" style="width:16px;height:16px"></i></button>
       </div>
@@ -97,6 +98,9 @@
       <div class="screen zoom-grid-view" id="screen">
         <!-- OLED Dynamic Ambilight Background Canvas -->
         <canvas id="ambilightCanvas" class="ambilight-canvas"></canvas>
+
+        <!-- Real-Time Synchronized Drawing & Laser Annotation Canvas -->
+        <canvas id="annotationCanvas" class="annotation-canvas"></canvas>
         
         <!-- Authentic 35mm Celluloid Film Grain Overlay -->
         <div id="filmGrainOverlay" class="film-grain-overlay"></div>
@@ -105,7 +109,7 @@
         <div class="drop-zone-overlay" id="dropZoneOverlay">
           <div class="drop-zone-content">
             <i data-lucide="upload-cloud" style="width:48px;height:48px"></i>
-            <span>Drop video file here</span>
+            <span>Drop video file here to play</span>
           </div>
         </div>
 
@@ -219,6 +223,9 @@
             <option value="2">2x</option>
           </select>
 
+          <!-- Laser Pointer / Drawing Annotation Toggle -->
+          <button class="ctrl-btn hide-mobile" id="drawBtn" title="Laser Pointer / Draw Overlay (D)"><i data-lucide="edit-3" style="width:16px;height:16px"></i></button>
+
           <label class="ctrl-btn hide-mobile" for="subFileIn" title="Load Subtitles (.srt / .vtt)">
             <i data-lucide="subtitles" style="width:16px;height:16px"></i>
             <input type="file" id="subFileIn" accept=".srt,.vtt" hidden>
@@ -261,6 +268,7 @@
         <div class="side-tabs">
           <button class="side-tab active" data-panel="chatPanel"><i data-lucide="message-circle" style="width:14px;height:14px"></i> Chat <span class="unread-badge" id="chatUnreadBadge" style="display:none">0</span></button>
           <button class="side-tab" data-panel="audioPanel"><i data-lucide="sliders" style="width:14px;height:14px"></i> Audio</button>
+          <button class="side-tab" data-panel="playlistPanel"><i data-lucide="list-video" style="width:14px;height:14px"></i> Queue</button>
           <button class="side-tab" data-panel="soundPanel"><i data-lucide="volume-2" style="width:14px;height:14px"></i> FX</button>
         </div>
 
@@ -293,6 +301,11 @@
             <input type="range" id="gainSlider" min="0" max="30" value="10">
             <label class="cfg-row"><span>Audio Lip-Sync Delay</span><span id="delayVal">0 ms</span></label>
             <input type="range" id="delaySlider" min="0" max="500" value="0">
+            
+            <!-- Partner Remote Volume Boost -->
+            <label class="cfg-row"><span>Partner Stream Volume</span><span id="remoteVolVal">100%</span></label>
+            <input type="range" id="remoteVolSlider" min="0" max="200" value="100">
+
             <div class="cfg-row"><span>Echo Cancellation</span><span class="badge-on">Active</span></div>
             <div class="meter-wrap">
               <span>Mic Level</span>
@@ -307,6 +320,23 @@
               <div class="cfg-row"><span>Resolution</span><span id="statsResolution">--</span></div>
               <div class="cfg-row"><span>Frame Rate</span><span id="statsFps">-- fps</span></div>
             </div>
+          </div>
+        </div>
+
+        <!-- Video Queue / Playlist Panel -->
+        <div class="side-panel" id="playlistPanel">
+          <div class="playlist-wrap">
+            <div class="playlist-top">
+              <h4>🎞️ Video Queue</h4>
+              <label class="btn-outline btn-sm" for="playlistIn">
+                <i data-lucide="plus" style="width:14px;height:14px"></i> Add Videos
+              </label>
+              <input type="file" id="playlistIn" accept="video/*" multiple hidden>
+            </div>
+            <p class="playlist-sub">Queue multiple files to play automatically</p>
+            <ul class="playlist-items" id="playlistItems">
+              <li class="playlist-empty">No videos queued. Click "Add Videos" or drag files into theater!</li>
+            </ul>
           </div>
         </div>
 
@@ -416,6 +446,26 @@
     </div>
   </div>
 
+  <!-- Diagnostics Modal -->
+  <div class="modal-bg" id="diagnosticsModal">
+    <div class="modal diagnostics-modal">
+      <div class="modal-top">
+        <h3>⚡ Network & WebRTC Diagnostics</h3>
+        <button class="btn-icon" id="closeDiagnosticsBtn"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+      </div>
+      <div class="diagnostics-body">
+        <div class="diag-item"><span>Signaling Connection</span><span class="badge-on" id="diagSignaling">Connected</span></div>
+        <div class="diag-item"><span>Peer ID</span><code id="diagPeerId">--</code></div>
+        <div class="diag-item"><span>Connected Partner</span><code id="diagTargetId">--</code></div>
+        <div class="diag-item"><span>Round Trip Latency</span><span id="diagRtt">-- ms</span></div>
+        <div class="diag-item"><span>Packet Loss</span><span id="diagLoss">0%</span></div>
+        <div class="diag-item"><span>Active Video Stream</span><span id="diagStream">None</span></div>
+        <div class="diag-item"><span>ICE Candidate Transport</span><span id="diagIce">STUN / Direct</span></div>
+        <button class="btn-outline w-full" id="diagPingBtn" style="margin-top:10px"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Test Latency & Ping</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Keyboard Shortcuts Modal -->
   <div class="modal-bg" id="shortcutsModal">
     <div class="modal shortcuts-modal">
@@ -427,6 +477,7 @@
         <div class="shortcut-item"><kbd>Space</kbd><span>Play / Pause</span></div>
         <div class="shortcut-item"><kbd>←</kbd><span>Skip Back 10s</span></div>
         <div class="shortcut-item"><kbd>→</kbd><span>Skip Forward 10s</span></div>
+        <div class="shortcut-item"><kbd>D</kbd><span>Laser Pointer / Draw</span></div>
         <div class="shortcut-item"><kbd>M</kbd><span>Toggle Microphone</span></div>
         <div class="shortcut-item"><kbd>C</kbd><span>Toggle Camera</span></div>
         <div class="shortcut-item"><kbd>F</kbd><span>Toggle Fullscreen</span></div>

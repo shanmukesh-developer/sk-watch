@@ -23,6 +23,15 @@ document.addEventListener('DOMContentLoaded', () => {
   let typingTimeout = null;
   let isTyping = false;
 
+  // Video Queue / Playlist State
+  let playlist = [];
+  let currentPlaylistIndex = -1;
+
+  // Laser Pointer / Drawing Annotation State
+  let isDrawingMode = false;
+  let isMouseDown = false;
+  let drawColor = '#00d4ff';
+
   const sfx = new SoundFXEngine();
 
   // ─── Load Persistent Settings ───
@@ -101,7 +110,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (maskedTextCanvas) {
     const maskedCtx = maskedTextCanvas.getContext('2d');
 
-    // Create offscreen flipbook canvas
     const flipCanvas = document.createElement('canvas');
     flipCanvas.width = 1100;
     flipCanvas.height = 240;
@@ -261,7 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch {}
   }
 
-  // ─── Auto-Ping Keep Alive (Client-side ping every 13 minutes) ───
+  // ─── Auto-Ping Keep Alive ───
   setInterval(() => {
     fetch('/ping').catch(() => {});
   }, 13 * 60 * 1000);
@@ -348,6 +356,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const speedSelect = $('speedSelect');
   const nativePipBtn = $('nativePipBtn');
   const shortcutsBtn = $('shortcutsBtn');
+  const drawBtn = $('drawBtn');
+  const diagnosticsBtn = $('diagnosticsBtn');
 
   const chatLog = $('chatLog');
   const chatForm = $('chatForm');
@@ -362,22 +372,38 @@ document.addEventListener('DOMContentLoaded', () => {
   const gainSlider = $('gainSlider');
   const gainVal = $('gainVal');
   const meterFill = $('meterFill');
+  const remoteVolSlider = $('remoteVolSlider');
+  const remoteVolVal = $('remoteVolVal');
 
   const statsRtt = $('statsRtt');
   const statsPacketLoss = $('statsPacketLoss');
   const statsResolution = $('statsResolution');
   const statsFps = $('statsFps');
 
+  const playlistIn = $('playlistIn');
+  const playlistItems = $('playlistItems');
+
   const reconnectingOverlay = $('reconnectingOverlay');
   const reconnectingText = $('reconnectingText');
   const dropZoneOverlay = $('dropZoneOverlay');
   const shortcutsModal = $('shortcutsModal');
   const closeShortcutsBtn = $('closeShortcutsBtn');
+  const diagnosticsModal = $('diagnosticsModal');
+  const closeDiagnosticsBtn = $('closeDiagnosticsBtn');
+  const diagSignaling = $('diagSignaling');
+  const diagPeerId = $('diagPeerId');
+  const diagTargetId = $('diagTargetId');
+  const diagRtt = $('diagRtt');
+  const diagLoss = $('diagLoss');
+  const diagStream = $('diagStream');
+  const diagIce = $('diagIce');
+  const diagPingBtn = $('diagPingBtn');
 
-  // ─── Load saved settings after DOM refs are ready ───
+  const annotationCanvas = $('annotationCanvas');
+  let annotationCtx = annotationCanvas ? annotationCanvas.getContext('2d') : null;
+
   loadSettings();
 
-  // ─── Apply loaded nickname ───
   if (nicknameInput && nickname) {
     nicknameInput.value = nickname;
   }
@@ -434,6 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
       pip.style.display = 'flex';
     }
     saveSettings();
+    resizeAnnotationCanvas();
   }
 
   viewGridBtn?.addEventListener('click', () => setViewMode('grid'));
@@ -475,7 +502,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.lucide) lucide.createIcons();
   }
 
-  // ─── Update nickname display ───
   function updateNicknameDisplay() {
     const initial = nickname ? nickname.charAt(0).toUpperCase() : 'S';
     const displayName = nickname || 'Shanmukh';
@@ -493,7 +519,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (presenceText) presenceText.textContent = partnerNickname;
   }
 
-  // ─── Tabs with unread reset ───
+  // ─── Tabs ───
   document.querySelectorAll('.side-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('.side-tab').forEach(t => t.classList.remove('active'));
@@ -534,6 +560,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const labels = { ready: 'Ready', connecting: 'Connecting...', connected: 'Connected', disconnected: 'Offline', error: 'Error' };
       statusText.textContent = labels[s] || s;
 
+      if (diagSignaling) diagSignaling.textContent = labels[s] || s;
+
       if (s === 'error') {
         toast(detail || 'Connection failed', 'warn');
         sysMsg(`⚠️ ${detail || 'Error'}`);
@@ -542,7 +570,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (reconnectingOverlay) reconnectingOverlay.style.display = 'none';
         if (presenceBadge) presenceBadge.style.display = 'flex';
         if (qualityIndicator) qualityIndicator.style.display = 'flex';
-        // Send nickname on connect
         rtc.send('IDENTITY', { nickname });
         startPresencePing();
       } else if (s === 'connecting') {
@@ -557,6 +584,7 @@ document.addEventListener('DOMContentLoaded', () => {
       sysMsg('🎉 Partner connected!');
       toast('Partner joined!', 'ok');
       showNotification('SK WatchParty', 'Partner joined the room!');
+      if (diagTargetId) diagTargetId.textContent = pid;
       if (syncMode && localVideo && !localVideo.paused) {
         rtc.send('SYNC', { a: 'play', t: localVideo.currentTime, speed: localVideo.playbackRate });
       }
@@ -565,6 +593,7 @@ document.addEventListener('DOMContentLoaded', () => {
       sysMsg('Partner disconnected.');
       toast('Partner left', 'warn');
       showNotification('SK WatchParty', 'Partner disconnected.');
+      if (diagTargetId) diagTargetId.textContent = '--';
       updateParticipantCards();
       updatePresenceUI('away');
     },
@@ -572,7 +601,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (stream) {
         screenVideo.srcObject = stream;
         screenVideo.muted = false;
-        screenVideo.volume = volSlider ? volSlider.value / 100 : 1;
+        screenVideo.volume = volSlider ? (volSlider.value / 100) * (remoteVolSlider ? remoteVolSlider.value / 100 : 1) : 1;
         screenVideo.style.display = 'block';
         localVideo.style.display = 'none';
         cardMainStream.style.display = 'flex';
@@ -584,6 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         toast('Receiving HD screen & audio!', 'ok');
         showNotification('SK WatchParty', 'Partner started screen sharing!');
+        if (diagStream) diagStream.textContent = 'Screen Share';
       } else {
         sharing = false;
         screenVideo.srcObject = null;
@@ -595,6 +625,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!syncMode) {
           welcome.style.display = 'flex';
           setViewMode('grid');
+          if (diagStream) diagStream.textContent = 'None';
         }
       }
     },
@@ -602,6 +633,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (stream) {
         remoteCam.srcObject = stream;
         remoteCam.muted = false;
+        remoteCam.volume = remoteVolSlider ? remoteVolSlider.value / 100 : 1;
         remoteCam.play().catch(err => {
           console.log('Cam playback blocked, tap banner to enable', err);
           if (tapUnmute) tapUnmute.style.display = 'flex';
@@ -624,6 +656,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (statsPacketLoss) statsPacketLoss.textContent = `${stats.packetLoss}%`;
       if (statsResolution) statsResolution.textContent = stats.resolution || '--';
       if (statsFps) statsFps.textContent = `${stats.fps || '--'} fps`;
+      if (diagRtt) diagRtt.textContent = `${stats.rtt} ms`;
+      if (diagLoss) diagLoss.textContent = `${stats.packetLoss}%`;
       if (streamBadge && stats.resolution) {
         streamBadge.textContent = `${stats.resolution} ${stats.fps}FPS`;
       }
@@ -640,8 +674,18 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (stats.rtt > 50 || stats.packetLoss > 0.5) quality = 'good';
 
     signalBars.className = `signal-bars ${quality}`;
-    const labels = { excellent: '●', good: '●', fair: '●', poor: '●' };
     qualityLabel.textContent = `${stats.rtt}ms`;
+  }
+
+  // ─── Remote Volume Booster ───
+  if (remoteVolSlider && remoteVolVal) {
+    remoteVolSlider.addEventListener('input', e => {
+      const v = +e.target.value;
+      remoteVolVal.textContent = `${v}%`;
+      const multiplier = v / 100;
+      if (screenVideo) screenVideo.volume = Math.min(1, (volSlider ? volSlider.value / 100 : 1) * multiplier);
+      if (remoteCam) remoteCam.volume = Math.min(1, multiplier);
+    });
   }
 
   // ─── Presence System ───
@@ -678,6 +722,7 @@ document.addEventListener('DOMContentLoaded', () => {
     roomId = id;
     if (roomIdDisplay) roomIdDisplay.textContent = id;
     if (modalRoomId) modalRoomId.textContent = id;
+    if (diagPeerId) diagPeerId.textContent = id;
 
     const urlParams = new URLSearchParams(window.location.search);
     const joinRoomParam = urlParams.get('room') || urlParams.get('join');
@@ -696,7 +741,6 @@ document.addEventListener('DOMContentLoaded', () => {
   closeModalBtn.addEventListener('click', () => roomModal.classList.remove('open'));
   roomModal.addEventListener('click', e => { if (e.target === roomModal) roomModal.classList.remove('open'); });
 
-  // Nickname input handler
   if (nicknameInput) {
     nicknameInput.addEventListener('input', e => {
       nickname = e.target.value.trim();
@@ -706,7 +750,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   createBtn.addEventListener('click', async () => {
-    // Save nickname and password
     nickname = nicknameInput?.value?.trim() || '';
     roomPassword = roomPasswordInput?.value || '';
     updateNicknameDisplay();
@@ -766,6 +809,154 @@ document.addEventListener('DOMContentLoaded', () => {
     navigator.clipboard.writeText(roomId).then(() => toast('Room ID copied!', 'ok'));
   });
 
+  // ─── Diagnostics Modal ───
+  if (diagnosticsBtn) {
+    diagnosticsBtn.addEventListener('click', () => diagnosticsModal?.classList.add('open'));
+  }
+  if (qualityIndicator) {
+    qualityIndicator.addEventListener('click', () => diagnosticsModal?.classList.add('open'));
+  }
+  if (closeDiagnosticsBtn) {
+    closeDiagnosticsBtn.addEventListener('click', () => diagnosticsModal?.classList.remove('open'));
+  }
+  if (diagnosticsModal) {
+    diagnosticsModal.addEventListener('click', e => { if (e.target === diagnosticsModal) diagnosticsModal.classList.remove('open'); });
+  }
+
+  if (diagPingBtn) {
+    diagPingBtn.addEventListener('click', () => {
+      const start = Date.now();
+      toast('Testing signaling ping latency...', 'info');
+      fetch('/ping').then(() => {
+        const ms = Date.now() - start;
+        toast(`Server ping: ${ms}ms`, 'ok');
+        if (diagRtt) diagRtt.textContent = `${ms} ms (Server)`;
+      }).catch(() => toast('Ping failed', 'err'));
+    });
+  }
+
+  // ─── Laser Pointer & Drawing Annotation Canvas System ───
+  function resizeAnnotationCanvas() {
+    if (!annotationCanvas) return;
+    annotationCanvas.width = screenEl.clientWidth;
+    annotationCanvas.height = screenEl.clientHeight;
+  }
+  window.addEventListener('resize', resizeAnnotationCanvas);
+  resizeAnnotationCanvas();
+
+  if (drawBtn) {
+    drawBtn.addEventListener('click', () => {
+      isDrawingMode = !isDrawingMode;
+      drawBtn.classList.toggle('drawing', isDrawingMode);
+      annotationCanvas.classList.toggle('active', isDrawingMode);
+      toast(isDrawingMode ? 'Laser Pointer / Draw mode active' : 'Draw mode off', 'info');
+    });
+  }
+
+  function handleDrawPoint(x, y, isDrawing, color = '#00d4ff') {
+    if (!annotationCtx || !annotationCanvas) return;
+    const cw = annotationCanvas.width;
+    const ch = annotationCanvas.height;
+    const px = x * cw;
+    const py = y * ch;
+
+    annotationCtx.save();
+    annotationCtx.fillStyle = color;
+    annotationCtx.shadowColor = color;
+    annotationCtx.shadowBlur = 12;
+    annotationCtx.beginPath();
+    annotationCtx.arc(px, py, isDrawing ? 4 : 6, 0, Math.PI * 2);
+    annotationCtx.fill();
+    annotationCtx.restore();
+
+    // Auto fade out trail
+    setTimeout(() => {
+      annotationCtx.clearRect(0, 0, cw, ch);
+    }, 1200);
+  }
+
+  if (annotationCanvas) {
+    annotationCanvas.addEventListener('mousedown', e => {
+      isMouseDown = true;
+      const rect = annotationCanvas.getBoundingClientRect();
+      const nx = (e.clientX - rect.left) / rect.width;
+      const ny = (e.clientY - rect.top) / rect.height;
+      handleDrawPoint(nx, ny, true, drawColor);
+      rtc.send('DRAW_POINT', { x: nx, y: ny, color: drawColor });
+    });
+
+    annotationCanvas.addEventListener('mousemove', e => {
+      if (!isDrawingMode) return;
+      const rect = annotationCanvas.getBoundingClientRect();
+      const nx = (e.clientX - rect.left) / rect.width;
+      const ny = (e.clientY - rect.top) / rect.height;
+      handleDrawPoint(nx, ny, isMouseDown, drawColor);
+      rtc.send('DRAW_POINT', { x: nx, y: ny, color: drawColor });
+    });
+
+    annotationCanvas.addEventListener('mouseup', () => { isMouseDown = false; });
+  }
+
+  // ─── Video Queue / Playlist System ───
+  if (playlistIn) {
+    playlistIn.addEventListener('change', e => {
+      const files = Array.from(e.target.files);
+      if (files.length === 0) return;
+      files.forEach(f => playlist.push(f));
+      renderPlaylistUI();
+      toast(`Added ${files.length} video(s) to queue`, 'ok');
+
+      if (!syncMode && playlist.length > 0) {
+        playPlaylistItem(0);
+      }
+    });
+  }
+
+  function renderPlaylistUI() {
+    if (!playlistItems) return;
+    if (playlist.length === 0) {
+      playlistItems.innerHTML = `<li class="playlist-empty">No videos queued. Click "Add Videos" or drag files into theater!</li>`;
+      return;
+    }
+    playlistItems.innerHTML = '';
+    playlist.forEach((file, idx) => {
+      const li = document.createElement('li');
+      li.className = `playlist-item ${idx === currentPlaylistIndex ? 'active' : ''}`;
+      li.innerHTML = `
+        <span class="playlist-name"><i data-lucide="video" style="width:14px;height:14px"></i> ${esc(file.name)}</span>
+        <button class="playlist-remove" title="Remove"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+      `;
+      li.querySelector('.playlist-name').addEventListener('click', () => playPlaylistItem(idx));
+      li.querySelector('.playlist-remove').addEventListener('click', (e) => {
+        e.stopPropagation();
+        playlist.splice(idx, 1);
+        if (currentPlaylistIndex === idx) currentPlaylistIndex = -1;
+        renderPlaylistUI();
+      });
+      playlistItems.appendChild(li);
+    });
+    if (window.lucide) lucide.createIcons();
+  }
+
+  function playPlaylistItem(idx) {
+    if (idx < 0 || idx >= playlist.length) return;
+    currentPlaylistIndex = idx;
+    renderPlaylistUI();
+    loadVideoFile(playlist[idx]);
+  }
+
+  localVideo.addEventListener('ended', () => {
+    playPauseBtn.innerHTML = `<i data-lucide="play" style="width:18px;height:18px"></i>`;
+    if (window.lucide) lucide.createIcons();
+    if (syncMode) rtc.send('SYNC', { a: 'pause', t: localVideo.duration || 0 });
+
+    // Auto-advance to next playlist video
+    if (playlist.length > 0 && currentPlaylistIndex < playlist.length - 1) {
+      toast('Auto-playing next video in queue...', 'info');
+      setTimeout(() => playPlaylistItem(currentPlaylistIndex + 1), 1000);
+    }
+  });
+
   // ─── Screen Share ───
   shareBtn.addEventListener('click', async () => {
     if (sharing) {
@@ -823,6 +1014,9 @@ document.addEventListener('DOMContentLoaded', () => {
   fileIn.addEventListener('change', async e => {
     const f = e.target.files[0];
     if (!f) return;
+    playlist = [f];
+    currentPlaylistIndex = 0;
+    renderPlaylistUI();
     loadVideoFile(f);
   });
 
@@ -839,6 +1033,7 @@ document.addEventListener('DOMContentLoaded', () => {
     syncMode = true;
     seekBar.disabled = false;
     setViewMode('stage');
+    if (diagStream) diagStream.textContent = `Local File: ${f.name}`;
 
     localVideo.addEventListener('loadedmetadata', () => {
       const dur = localVideo.duration || 1;
@@ -873,11 +1068,15 @@ document.addEventListener('DOMContentLoaded', () => {
     screenEl.addEventListener('drop', e => {
       e.preventDefault();
       dropZoneOverlay.classList.remove('active');
-      const files = e.dataTransfer.files;
-      if (files.length > 0 && files[0].type.startsWith('video/')) {
-        loadVideoFile(files[0]);
+      const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('video/'));
+      if (files.length > 0) {
+        playlist.push(...files);
+        renderPlaylistUI();
+        if (!syncMode) {
+          playPlaylistItem(playlist.length - files.length);
+        }
       } else {
-        toast('Please drop a video file', 'warn');
+        toast('Please drop video files', 'warn');
       }
     });
   }
@@ -895,12 +1094,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   localVideo.addEventListener('seeked', () => {
     attachAndStreamLocalVideo();
-  });
-
-  localVideo.addEventListener('ended', () => {
-    playPauseBtn.innerHTML = `<i data-lucide="play" style="width:18px;height:18px"></i>`;
-    if (window.lucide) lucide.createIcons();
-    if (syncMode) rtc.send('SYNC', { a: 'pause', t: localVideo.duration || 0 });
   });
 
   localVideo.addEventListener('timeupdate', () => {
@@ -1391,7 +1584,6 @@ document.addEventListener('DOMContentLoaded', () => {
     rtc.send('TYPING', { typing: false });
   });
 
-  // Chat image paste support
   chatIn.addEventListener('paste', e => {
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -1428,7 +1620,6 @@ document.addEventListener('DOMContentLoaded', () => {
     chatLog.appendChild(d);
     chatLog.scrollTop = chatLog.scrollHeight;
 
-    // Increment unread if chat panel not active
     if (!me) {
       const chatTab = document.querySelector('[data-panel="chatPanel"]');
       if (chatTab && !chatTab.classList.contains('active')) {
@@ -1549,13 +1740,9 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
         break;
-      case 'PASSWORD_CHECK':
-        if (d.payload?.password && roomPassword) {
-          const valid = d.payload.password === roomPassword;
-          rtc.send('PASSWORD_RESULT', { valid });
-          if (!valid) {
-            toast(`${partnerNickname} entered wrong password`, 'warn');
-          }
+      case 'DRAW_POINT':
+        if (d.payload?.x !== undefined && d.payload?.y !== undefined) {
+          handleDrawPoint(d.payload.x, d.payload.y, true, d.payload.color || '#a855f7');
         }
         break;
     }
@@ -1607,6 +1794,9 @@ document.addEventListener('DOMContentLoaded', () => {
       case 't': theaterBtn.click(); break;
       case 'c': camBtn.click(); break;
       case 'g': setViewMode(currentViewMode === 'grid' ? 'stage' : 'grid'); break;
+      case 'd':
+        if (drawBtn) drawBtn.click();
+        break;
       case 'p':
         if (nativePipBtn) nativePipBtn.click();
         break;
@@ -1648,11 +1838,12 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'escape':
         roomModal.classList.remove('open');
         if (shortcutsModal) shortcutsModal.classList.remove('open');
+        if (diagnosticsModal) diagnosticsModal.classList.remove('open');
         break;
     }
   });
 
-  // ─── Draggable PIP (mouse + touch) ───
+  // ─── Draggable PIP ───
   let dragX, dragY;
   function onDragStart(x, y) { dragX = x; dragY = y; }
   function onDragMove(x, y) {
