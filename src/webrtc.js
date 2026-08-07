@@ -65,17 +65,21 @@ export class RTC {
     if (this.socket) return;
 
     const socketUrl = window.location.origin;
+    console.log('[Relay] Connecting to relay server:', socketUrl);
+
     this.socket = io(socketUrl, {
-      transports: ['websocket', 'polling'],
+      path: '/relay',                              // Must match server path
+      transports: ['polling', 'websocket'],        // Polling first (more reliable on Render)
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 10000,
-      timeout: 15000
+      timeout: 20000,
+      forceNew: true
     });
 
     this.socket.on('connect', () => {
-      console.log('[Socket.IO] Connected to relay server:', this.socket.id);
+      console.log('[Relay] ✅ Connected! Socket ID:', this.socket.id);
       this._socketConnected = true;
 
       // Re-join room if we had one (reconnection scenario)
@@ -88,14 +92,19 @@ export class RTC {
       }
     });
 
+    this.socket.on('connect_error', (err) => {
+      console.error('[Relay] ❌ Connection error:', err.message);
+      this._socketConnected = false;
+    });
+
     this.socket.on('disconnect', (reason) => {
-      console.warn('[Socket.IO] Disconnected:', reason);
+      console.warn('[Relay] Disconnected:', reason);
       this._socketConnected = false;
       this._socketRoomJoined = false;
     });
 
     this.socket.on('reconnect', (attemptNumber) => {
-      console.log('[Socket.IO] Reconnected after', attemptNumber, 'attempts');
+      console.log('[Relay] Reconnected after', attemptNumber, 'attempts');
     });
 
     // ─── Receive relayed data messages ───
