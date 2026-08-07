@@ -80,6 +80,13 @@
       </div>
 
       <div class="header-right">
+        <!-- Theme Selector -->
+        <select id="themeSelect" class="ctrl-select hide-mobile" title="Theater Theme">
+          <option value="cyber">🌌 Cyber Cyan</option>
+          <option value="gold">🍿 Nolan Gold</option>
+          <option value="crimson">🔴 Marvel Red</option>
+          <option value="oled">🖤 OLED Midnight</option>
+        </select>
         <div class="view-switchers" id="viewSwitchers">
           <button class="btn-icon active" id="viewGridBtn" title="Zoom Grid View (G)"><i data-lucide="grid" style="width:16px;height:16px"></i></button>
           <button class="btn-icon" id="viewStageBtn" title="Spotlight Stage View"><i data-lucide="layout-template" style="width:16px;height:16px"></i></button>
@@ -175,6 +182,13 @@
             <label class="btn-outline" for="fileIn"><i data-lucide="file-video" style="width:18px;height:18px"></i> Load File</label>
             <input type="file" id="fileIn" accept="video/*" hidden>
           </div>
+
+          <!-- Video URL Streamer Bar -->
+          <div class="url-streamer-box">
+            <input type="text" id="videoUrlInput" placeholder="Paste Video URL (MP4 / WebM)...">
+            <button class="btn-primary btn-sm" id="streamUrlBtn"><i data-lucide="play-circle" style="width:14px;height:14px"></i> Play URL</button>
+          </div>
+
           <div class="tip">💡 Tip: Select <b>"Entire Screen"</b> to share any app/window when switching, or select <b>"Chrome Tab"</b> with <b>"Also share tab audio"</b> for movie streaming!</div>
         </div>
 
@@ -302,8 +316,17 @@
             <label class="cfg-row"><span>Audio Lip-Sync Delay</span><span id="delayVal">0 ms</span></label>
             <input type="range" id="delaySlider" min="0" max="500" value="0">
             
+            <!-- 3-Band Equalizer -->
+            <h4 style="margin-top:8px">🎛️ 3-Band Cinema Equalizer</h4>
+            <label class="cfg-row"><span>Bass Boost (90Hz)</span><span id="eqBassVal">0 dB</span></label>
+            <input type="range" id="eqBassSlider" min="-12" max="12" value="0">
+            <label class="cfg-row"><span>Vocal Mid (1kHz)</span><span id="eqMidVal">0 dB</span></label>
+            <input type="range" id="eqMidSlider" min="-12" max="12" value="0">
+            <label class="cfg-row"><span>Treble Clarity (6kHz)</span><span id="eqTrebleVal">0 dB</span></label>
+            <input type="range" id="eqTrebleSlider" min="-12" max="12" value="0">
+
             <!-- Partner Remote Volume Boost -->
-            <label class="cfg-row"><span>Partner Stream Volume</span><span id="remoteVolVal">100%</span></label>
+            <label class="cfg-row" style="margin-top:8px"><span>Partner Stream Volume</span><span id="remoteVolVal">100%</span></label>
             <input type="range" id="remoteVolSlider" min="0" max="200" value="100">
 
             <div class="cfg-row"><span>Echo Cancellation</span><span class="badge-on">Active</span></div>

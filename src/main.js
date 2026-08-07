@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let presenceInterval = null;
   let typingTimeout = null;
   let isTyping = false;
+  let currentTheme = 'cyber';
 
   // Video Queue / Playlist State
   let playlist = [];
@@ -38,6 +39,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function loadSettings() {
     try {
       nickname = localStorage.getItem('sk_nickname') || '';
+      currentTheme = localStorage.getItem('sk_theme') || 'cyber';
+      applyTheme(currentTheme);
+
       const saved = localStorage.getItem('sk_settings');
       if (saved) {
         const s = JSON.parse(saved);
@@ -53,6 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function saveSettings() {
     try {
       localStorage.setItem('sk_nickname', nickname);
+      localStorage.setItem('sk_theme', currentTheme);
       localStorage.setItem('sk_settings', JSON.stringify({
         volume: volSlider?.value || 100,
         noiseFilter: noiseCheck?.checked ?? true,
@@ -61,6 +66,26 @@ document.addEventListener('DOMContentLoaded', () => {
         viewMode: currentViewMode
       }));
     } catch (e) {}
+  }
+
+  // ─── Color Themes ───
+  const themeSelect = document.getElementById('themeSelect');
+  if (themeSelect) {
+    themeSelect.value = currentTheme;
+    themeSelect.addEventListener('change', e => {
+      applyTheme(e.target.value);
+      rtc.send('THEME_SYNC', { theme: e.target.value });
+    });
+  }
+
+  function applyTheme(themeName) {
+    currentTheme = themeName;
+    document.body.classList.remove('theme-cyber', 'theme-gold', 'theme-crimson', 'theme-oled');
+    if (themeName !== 'cyber') {
+      document.body.classList.add(`theme-${themeName}`);
+    }
+    if (themeSelect) themeSelect.value = themeName;
+    saveSettings();
   }
 
   // ─── Browser Notification Permission ───
@@ -314,6 +339,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const welcome = $('welcome');
   const shareBtn = $('shareBtn');
   const fileIn = $('fileIn');
+  const videoUrlInput = $('videoUrlInput');
+  const streamUrlBtn = $('streamUrlBtn');
 
   const cardLocal = $('cardLocal');
   const localCam = $('localCam');
@@ -374,6 +401,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const meterFill = $('meterFill');
   const remoteVolSlider = $('remoteVolSlider');
   const remoteVolVal = $('remoteVolVal');
+
+  const eqBassSlider = $('eqBassSlider');
+  const eqBassVal = $('eqBassVal');
+  const eqMidSlider = $('eqMidSlider');
+  const eqMidVal = $('eqMidVal');
+  const eqTrebleSlider = $('eqTrebleSlider');
+  const eqTrebleVal = $('eqTrebleVal');
 
   const statsRtt = $('statsRtt');
   const statsPacketLoss = $('statsPacketLoss');
@@ -677,6 +711,23 @@ document.addEventListener('DOMContentLoaded', () => {
     qualityLabel.textContent = `${stats.rtt}ms`;
   }
 
+  // ─── 3-Band Equalizer Controls ───
+  function updateEQ() {
+    const bass = eqBassSlider ? +eqBassSlider.value : 0;
+    const mid = eqMidSlider ? +eqMidSlider.value : 0;
+    const treble = eqTrebleSlider ? +eqTrebleSlider.value : 0;
+
+    if (eqBassVal) eqBassVal.textContent = `${bass > 0 ? '+' : ''}${bass} dB`;
+    if (eqMidVal) eqMidVal.textContent = `${mid > 0 ? '+' : ''}${mid} dB`;
+    if (eqTrebleVal) eqTrebleVal.textContent = `${treble > 0 ? '+' : ''}${treble} dB`;
+
+    rtc.dsp.setEQ(bass, mid, treble);
+  }
+
+  if (eqBassSlider) eqBassSlider.addEventListener('input', updateEQ);
+  if (eqMidSlider) eqMidSlider.addEventListener('input', updateEQ);
+  if (eqTrebleSlider) eqTrebleSlider.addEventListener('input', updateEQ);
+
   // ─── Remote Volume Booster ───
   if (remoteVolSlider && remoteVolVal) {
     remoteVolSlider.addEventListener('input', e => {
@@ -869,7 +920,6 @@ document.addEventListener('DOMContentLoaded', () => {
     annotationCtx.fill();
     annotationCtx.restore();
 
-    // Auto fade out trail
     setTimeout(() => {
       annotationCtx.clearRect(0, 0, cw, ch);
     }, 1200);
@@ -895,6 +945,41 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     annotationCanvas.addEventListener('mouseup', () => { isMouseDown = false; });
+  }
+
+  // ─── Web Video URL Streamer ───
+  if (streamUrlBtn && videoUrlInput) {
+    streamUrlBtn.addEventListener('click', () => {
+      const url = videoUrlInput.value.trim();
+      if (!url) return toast('Enter a video URL', 'warn');
+      loadUrlVideo(url);
+      rtc.send('STREAM_URL', { url });
+    });
+  }
+
+  function loadUrlVideo(url) {
+    localVideo.src = url;
+    localVideo.muted = false;
+    localVideo.volume = volSlider ? volSlider.value / 100 : 1;
+    localVideo.style.display = 'block';
+    screenVideo.style.display = 'none';
+    cardMainStream.style.display = 'flex';
+    mainStreamLabel.innerHTML = `<i data-lucide="globe" style="width:13px;height:13px"></i> Web Video Stream`;
+    welcome.style.display = 'none';
+    syncMode = true;
+    seekBar.disabled = false;
+    setViewMode('stage');
+    if (diagStream) diagStream.textContent = `URL: ${url}`;
+
+    localVideo.play().then(() => {
+      playPauseBtn.innerHTML = `<i data-lucide="pause" style="width:18px;height:18px"></i>`;
+      if (window.lucide) lucide.createIcons();
+      attachAndStreamLocalVideo();
+      sysMsg(`🌐 Streaming Web Video URL: ${url}`);
+      toast('Streaming URL video live!', 'ok');
+    }).catch(err => {
+      toast('Web video playback blocked or invalid format', 'warn');
+    });
   }
 
   // ─── Video Queue / Playlist System ───
@@ -950,7 +1035,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.lucide) lucide.createIcons();
     if (syncMode) rtc.send('SYNC', { a: 'pause', t: localVideo.duration || 0 });
 
-    // Auto-advance to next playlist video
     if (playlist.length > 0 && currentPlaylistIndex < playlist.length - 1) {
       toast('Auto-playing next video in queue...', 'info');
       setTimeout(() => playPlaylistItem(currentPlaylistIndex + 1), 1000);
@@ -1696,6 +1780,18 @@ document.addEventListener('DOMContentLoaded', () => {
           applyFilter(d.payload.filter);
           if (filterSelect) filterSelect.value = d.payload.filter;
           toast(`Color Grade: ${d.payload.filter}`, 'info');
+        }
+        break;
+      case 'THEME_SYNC':
+        if (d.payload?.theme) {
+          applyTheme(d.payload.theme);
+          toast(`Theater theme synced: ${d.payload.theme}`, 'info');
+        }
+        break;
+      case 'STREAM_URL':
+        if (d.payload?.url) {
+          loadUrlVideo(d.payload.url);
+          toast(`Partner loaded video URL: ${d.payload.url}`, 'info');
         }
         break;
       case 'CHAT':
